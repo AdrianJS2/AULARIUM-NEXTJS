@@ -1,45 +1,18 @@
--- Añadir columna resuelta a la tabla notificaciones
-ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS resuelta BOOLEAN DEFAULT FALSE;
+-- #####################################################################
+-- ## TRADUCCIÓN A MYSQL - MODIFICAR TABLA `notificaciones` (v2)
+-- #####################################################################
+--
+-- Explicación de Cambios:
+-- 1. Lógica Simplificada: Se ha eliminado el bloque `DO $$...$$` y todas las sentencias de políticas (`DROP POLICY`, `CREATE POLICY`),
+--    ya que no son aplicables en un entorno MySQL estándar.
+-- 2. Sintaxis de MySQL: Se utiliza `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` para añadir las columnas de forma idempotente (segura de ejecutar varias veces).
+-- 3. Tipos de Datos: `UUID` se convierte en `VARCHAR(36)` y `BOOLEAN` se mantiene.
+-- 4. Clave Foránea: La referencia a `auth.users(id)` se ha reemplazado por una clave foránea explícita que apunta a tu tabla `usuarios`.
 
--- Añadir columna remitente_id a la tabla notificaciones (para saber a quién enviar la confirmación)
-ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS remitente_id UUID REFERENCES auth.users(id);
+-- --- Añadir columnas `resuelta` y `remitente_id` a la tabla `notificaciones` ---
 
--- Eliminar políticas existentes si existen (para evitar errores)
-DROP POLICY IF EXISTS "Los usuarios pueden ver sus propias notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los administradores pueden ver todas las notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los usuarios pueden actualizar sus propias notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los administradores pueden actualizar todas las notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los usuarios pueden insertar notificaciones" ON notificaciones;
-
--- Crear política para permitir a los usuarios ver sus propias notificaciones
-CREATE POLICY "Los usuarios pueden ver sus propias notificaciones" ON notificaciones
-  FOR SELECT USING (auth.uid() = destinatario_id);
-
--- Crear política para permitir a los administradores ver todas las notificaciones
-CREATE POLICY "Los administradores pueden ver todas las notificaciones" ON notificaciones
-  FOR SELECT USING (
-    auth.uid() IN (
-      SELECT id FROM usuarios WHERE rol = 'admin'
-    )
-  );
-
--- Crear política para permitir a los usuarios actualizar sus propias notificaciones
-CREATE POLICY "Los usuarios pueden actualizar sus propias notificaciones" ON notificaciones
-  FOR UPDATE USING (auth.uid() = destinatario_id);
-
--- Crear política para permitir a los administradores actualizar todas las notificaciones
-CREATE POLICY "Los administradores pueden actualizar todas las notificaciones" ON notificaciones
-  FOR UPDATE USING (
-    auth.uid() IN (
-      SELECT id FROM usuarios WHERE rol = 'admin'
-    )
-  );
-
--- Crear política para permitir a los usuarios insertar notificaciones
-CREATE POLICY "Los usuarios pueden insertar notificaciones" ON notificaciones
-  FOR INSERT WITH CHECK (
-    auth.uid() = remitente_id OR
-    auth.uid() IN (
-      SELECT id FROM usuarios WHERE rol IN ('admin', 'director')
-    )
-  );
+ALTER TABLE `notificaciones`
+  ADD COLUMN IF NOT EXISTS `resuelta` BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS `remitente_id` VARCHAR(36),
+  ADD CONSTRAINT `fk_notificaciones_remitente_v2` -- Se usa un nombre de restricción único
+    FOREIGN KEY IF NOT EXISTS (`remitente_id`) REFERENCES `usuarios`(`id`) ON DELETE SET NULL;

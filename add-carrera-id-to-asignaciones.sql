@@ -1,38 +1,41 @@
--- Función para verificar si una columna existe antes de añadirla
-CREATE OR REPLACE FUNCTION column_exists(tbl text, col text) RETURNS boolean AS $$
-DECLARE
-  exists boolean;
-BEGIN
-  SELECT count(*) > 0 INTO exists
-  FROM information_schema.columns
-  WHERE table_name = tbl AND column_name = col;
-  RETURN exists;
-END;
-$$ LANGUAGE plpgsql;
+-- #####################################################################
+-- ## TRADUCCIÓN A MYSQL - AÑADIR COLUMNA `carrera_id`
+-- #####################################################################
+--
+-- Explicación de Cambios:
+-- 1. Eliminación de la Función y Bloques DO: La función `column_exists` y los bloques `DO $$...$$` son específicos de PostgreSQL.
+--    Se han eliminado por completo.
+-- 2. ALTER TABLE ... ADD COLUMN IF NOT EXISTS: Se utiliza la sintaxis moderna de MySQL para añadir una columna solo si no existe,
+--    lo que cumple el mismo propósito que la lógica original de una manera más simple.
+-- 3. Definición Explícita de Clave Foránea: La sentencia `REFERENCES` se ha separado en una restricción `FOREIGN KEY` explícita
+--    para mayor claridad y compatibilidad.
+-- 4. CREATE INDEX IF NOT EXISTS: La sintaxis para crear índices es compatible y se mantiene.
 
--- Añadir carrera_id a asignaciones_enero_abril si no existe
-DO $$
-BEGIN
-  IF NOT column_exists('asignaciones_enero_abril', 'carrera_id') THEN
-    ALTER TABLE asignaciones_enero_abril ADD COLUMN carrera_id INTEGER REFERENCES carreras(id);
-    CREATE INDEX idx_asignaciones_ea_carrera_id ON asignaciones_enero_abril(carrera_id);
-  END IF;
-END $$;
+-- --- Añadir columna y clave foránea a asignaciones_enero_abril ---
 
--- Añadir carrera_id a asignaciones_mayo_agosto si no existe
-DO $$
-BEGIN
-  IF NOT column_exists('asignaciones_mayo_agosto', 'carrera_id') THEN
-    ALTER TABLE asignaciones_mayo_agosto ADD COLUMN carrera_id INTEGER REFERENCES carreras(id);
-    CREATE INDEX idx_asignaciones_ma_carrera_id ON asignaciones_mayo_agosto(carrera_id);
-  END IF;
-END $$;
+ALTER TABLE `asignaciones_enero_abril`
+  ADD COLUMN IF NOT EXISTS `carrera_id` INT,
+  ADD CONSTRAINT `fk_asignaciones_ea_carrera`
+    FOREIGN KEY IF NOT EXISTS (`carrera_id`) REFERENCES `carreras`(`id`) ON DELETE SET NULL;
 
--- Añadir carrera_id a asignaciones_septiembre_diciembre si no existe
-DO $$
-BEGIN
-  IF NOT column_exists('asignaciones_septiembre_diciembre', 'carrera_id') THEN
-    ALTER TABLE asignaciones_septiembre_diciembre ADD COLUMN carrera_id INTEGER REFERENCES carreras(id);
-    CREATE INDEX idx_asignaciones_sd_carrera_id ON asignaciones_septiembre_diciembre(carrera_id);
-  END IF;
-END $$;
+CREATE INDEX IF NOT EXISTS `idx_asignaciones_ea_carrera_id` ON `asignaciones_enero_abril`(`carrera_id`);
+
+
+-- --- Añadir columna y clave foránea a asignaciones_mayo_agosto ---
+
+ALTER TABLE `asignaciones_mayo_agosto`
+  ADD COLUMN IF NOT EXISTS `carrera_id` INT,
+  ADD CONSTRAINT `fk_asignaciones_ma_carrera`
+    FOREIGN KEY IF NOT EXISTS (`carrera_id`) REFERENCES `carreras`(`id`) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS `idx_asignaciones_ma_carrera_id` ON `asignaciones_mayo_agosto`(`carrera_id`);
+
+
+-- --- Añadir columna y clave foránea a asignaciones_septiembre_diciembre ---
+
+ALTER TABLE `asignaciones_septiembre_diciembre`
+  ADD COLUMN IF NOT EXISTS `carrera_id` INT,
+  ADD CONSTRAINT `fk_asignaciones_sd_carrera`
+    FOREIGN KEY IF NOT EXISTS (`carrera_id`) REFERENCES `carreras`(`id`) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS `idx_asignaciones_sd_carrera_id` ON `asignaciones_septiembre_diciembre`(`carrera_id`);
