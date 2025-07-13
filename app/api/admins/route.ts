@@ -1,31 +1,26 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+// app/api/admins/route.ts
+// Ruta de API para obtener todos los usuarios con el rol de "admin".
 
-// Initialize Supabase client with service role key
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-// Create a Supabase client with the service role key
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+import { type NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/db"; // Importamos el nuevo módulo de conexión
 
 export async function GET(request: NextRequest) {
   try {
-    // Get all users with admin role
-    const { data, error } = await supabaseAdmin.from("usuarios").select("id, email, nombre").eq("rol", "admin")
+    // Ejecutamos una consulta SQL directa usando el pool de conexiones.
+    // Usamos '?' como marcador de posición para evitar inyección de SQL.
+    const [rows] = await pool.query(
+      "SELECT id, email, nombre FROM usuarios WHERE rol = ?", 
+      ['admin']
+    );
 
-    if (error) {
-      console.error("Error fetching admins:", error)
-      return NextResponse.json({ error: "Error al obtener administradores: " + error.message }, { status: 500 })
-    }
+    // Devolvemos los resultados en el formato esperado por el frontend.
+    return NextResponse.json({ admins: rows });
 
-    return NextResponse.json({ admins: data || [] })
   } catch (error: any) {
-    console.error("Error in admins API:", error)
-    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 })
+    console.error("Error en la API de administradores:", error);
+    return NextResponse.json(
+      { error: "Error interno del servidor: " + error.message }, 
+      { status: 500 }
+    );
   }
 }

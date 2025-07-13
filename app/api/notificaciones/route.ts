@@ -1,76 +1,61 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+// app/api/notificaciones/route.ts
+// Maneja la creación (POST) y obtención (GET) de notificaciones.
 
-// Initialize Supabase client with service role key
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+import { type NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/db";
 
-// Create a Supabase client with the service role key
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
-
+// --- MANEJADOR POST para crear una nueva notificación ---
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json()
+    const data = await request.json();
 
-    // Validate required fields
+    // Validación de campos requeridos.
     if (!data.tipo || !data.mensaje || !data.destinatario_id) {
-      return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+      return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 });
     }
 
-    // Insert notification into database using admin client
-    const { data: notification, error } = await supabaseAdmin
-      .from("notificaciones")
-      .insert({
-        tipo: data.tipo,
-        mensaje: data.mensaje,
-        datos: data.datos || {},
-        destinatario_id: data.destinatario_id,
-        leida: false,
-      })
-      .select()
-      .single()
+    // El objeto 'datos' se convierte a un string JSON para almacenarlo en la base de datos.
+    const datosJson = JSON.stringify(data.datos || {});
 
-    if (error) {
-      console.error("Error creating notification:", error)
-      return NextResponse.json({ error: "Error al crear la notificación: " + error.message }, { status: 500 })
-    }
+    // Inserción de la nueva notificación.
+    const [result]: [any, any] = await pool.query(
+      "INSERT INTO notificaciones (tipo, mensaje, datos, destinatario_id, remitente_id) VALUES (?, ?, ?, ?, ?)",
+      [data.tipo, data.mensaje, datosJson, data.destinatario_id, data.remitente_id || null]
+    );
 
-    return NextResponse.json(notification)
+    const insertId = result.insertId;
+
+    // Se recupera la notificación recién creada para devolverla completa.
+    const [rows]: [any[], any] = await pool.query("SELECT * FROM notificaciones WHERE id = ?", [insertId]);
+
+    return NextResponse.json(rows[0]);
+
   } catch (error: any) {
-    console.error("Error in notification API:", error)
-    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 })
+    console.error("Error en API de notificaciones (POST):", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
   }
 }
 
+// --- MANEJADOR GET para obtener las notificaciones de un usuario ---
 export async function GET(request: NextRequest) {
   try {
-    const url = new URL(request.url)
-    const userId = url.searchParams.get("userId")
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId");
 
     if (!userId) {
-      return NextResponse.json({ error: "Se requiere el ID de usuario" }, { status: 400 })
+      return NextResponse.json({ error: "Se requiere el ID de usuario" }, { status: 400 });
     }
 
-    // Get notifications for user
-    const { data, error } = await supabaseAdmin
-      .from("notificaciones")
-      .select("*")
-      .eq("destinatario_id", userId)
-      .order("fecha_creacion", { ascending: false })
+    // Consulta para obtener las notificaciones ordenadas por fecha.
+    const [rows] = await pool.query(
+      "SELECT * FROM notificaciones WHERE destinatario_id = ? ORDER BY fecha_creacion DESC",
+      [userId]
+    );
 
-    if (error) {
-      console.error("Error fetching notifications:", error)
-      return NextResponse.json({ error: "Error al obtener notificaciones: " + error.message }, { status: 500 })
-    }
+    return NextResponse.json(rows || []);
 
-    return NextResponse.json(data || [])
   } catch (error: any) {
-    console.error("Error in notification API:", error)
-    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 })
+    console.error("Error en API de notificaciones (GET):", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
   }
 }

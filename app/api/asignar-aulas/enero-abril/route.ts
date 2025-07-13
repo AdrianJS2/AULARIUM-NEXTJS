@@ -1,205 +1,127 @@
-import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
-import { isAdmin, getUserRole } from "@/lib/auth"
+// app/api/asignar-aulas/enero-abril/route.ts
+// Esta es la ruta refactorizada para el periodo Enero-Abril.
+// Las otras dos rutas ('mayo-agosto' y 'septiembre-diciembre') seguirían este mismo patrón.
 
-export async function POST(request: Request) {
+import { NextResponse } from "next/server";
+import pool from "@/lib/db";
+import { isAdmin, getUserRole } from "@/lib/auth";
+import { type NextRequest } from "next/server";
+
+export async function POST(request: NextRequest) {
+  const connection = await pool.getConnection();
+
   try {
-    const { aulas, carreraId } = await request.json()
+    const { aulas, carreraId } = await request.json();
 
-    // Verificar autenticación
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    // Simulación del ID de usuario (reemplazar con la sesión de NextAuth en la Tarea B)
+    const mockUserId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"; 
+    
+    const admin = await isAdmin(mockUserId);
+    const { rol, carrera_id } = await getUserRole(mockUserId);
 
-    if (authError) {
-      console.error("Auth error:", authError)
-      return NextResponse.json({ error: "Error de autenticación: " + authError.message }, { status: 401 })
-    }
+    // --- Inicio de la Transacción ---
+    await connection.beginTransaction();
 
-    if (!user) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-    }
-
-    console.log("User authenticated:", user.id)
-
-    // Verificar si el usuario es admin o tiene permisos
-    const admin = await isAdmin(user.id)
-    const { rol, carrera_id } = await getUserRole(user.id)
-
-    console.log("User role:", { admin, rol, carrera_id })
-
-    // Verificar que haya aulas
-    if (!aulas || aulas.length === 0) {
-      return NextResponse.json({ error: "No hay aulas disponibles para asignar" }, { status: 400 })
-    }
-
-    console.log("Aulas available:", aulas.length)
-
-    // Obtener materias y grupos
-    let materiasQuery = supabase.from("materias_enero_abril").select("*")
-
-    // Filtrar materias según el rol del usuario
+    // 1. Obtener materias según el rol y la carrera
+    let materiasQuery = "SELECT * FROM materias_enero_abril";
+    const params: (string | number)[] = [];
+    
     if (!admin) {
-      if (rol === "coordinador" && carrera_id) {
-        // Coordinador: filtrar por carrera
-        materiasQuery = materiasQuery.eq("carrera_id", carrera_id)
+      if (rol === 'coordinador' && carrera_id) {
+        materiasQuery += " WHERE carrera_id = ?";
+        params.push(carrera_id);
       } else {
-        // Usuario normal: filtrar por usuario_id
-        materiasQuery = materiasQuery.eq("usuario_id", user.id)
+        materiasQuery += " WHERE usuario_id = ?";
+        params.push(mockUserId);
       }
     } else if (carreraId) {
-      // Si es admin pero se especificó una carrera, filtrar por esa carrera
-      materiasQuery = materiasQuery.eq("carrera_id", carreraId)
+        materiasQuery += " WHERE carrera_id = ?";
+        params.push(carreraId);
+    }
+    
+    const [materias]: [any[], any] = await connection.query(materiasQuery, params);
+    if (materias.length === 0) {
+      await connection.rollback();
+      return NextResponse.json({ error: "No hay materias disponibles para asignar" }, { status: 404 });
     }
 
-    const { data: materias, error: materiasError } = await materiasQuery
+    // 2. Obtener grupos de esas materias
+    const materiaIds = materias.map((m: any) => m.id);
+    const [grupos]: [any[], any] = await connection.query(
+      "SELECT * FROM grupos_enero_abril WHERE materia_id IN (?)",
+      [materiaIds]
+    );
 
-    if (materiasError) {
-      console.error("Error fetching materias:", materiasError)
-      return NextResponse.json({ error: "Error al obtener materias: " + materiasError.message }, { status: 500 })
+    if (grupos.length === 0) {
+      await connection.rollback();
+      return NextResponse.json({ error: "No hay grupos disponibles para asignar" }, { status: 404 });
     }
 
-    if (!materias || materias.length === 0) {
-      console.log("No materias found")
-      return NextResponse.json({ error: "No hay materias disponibles para asignar" }, { status: 404 })
-    }
+    // 3. Eliminar asignaciones existentes para estos grupos
+    const grupoIds = grupos.map((g: any) => g.id);
+    await connection.query("DELETE FROM asignaciones_enero_abril WHERE grupo_id IN (?)", [grupoIds]);
 
-    console.log("Materias found:", materias.length)
+    // 4. Algoritmo de asignación (lógica de JS, no cambia)
+    const gruposConHorarios = grupos.map((grupo: any) => ({
+      ...grupo,
+      horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
+    }));
+    
+    gruposConHorarios.sort((a: any, b: any) => b.alumnos - a.alumnos);
 
-    // Obtener IDs de materias para filtrar grupos
-    const materiaIds = materias.map((m) => m.id)
-
-    // Consulta de grupos filtrada por materias del usuario
-    const { data: grupos, error: gruposError } = await supabase
-      .from("grupos_enero_abril")
-      .select("*")
-      .in("materia_id", materiaIds)
-
-    if (gruposError) {
-      console.error("Error fetching grupos:", gruposError)
-      return NextResponse.json({ error: "Error al obtener grupos: " + gruposError.message }, { status: 500 })
-    }
-
-    if (!grupos || grupos.length === 0) {
-      console.log("No grupos found")
-      return NextResponse.json({ error: "No hay grupos disponibles para asignar" }, { status: 404 })
-    }
-
-    console.log("Grupos found:", grupos.length)
-
-    // Eliminar asignaciones existentes para estos grupos
-    const grupoIds = grupos.map((g) => g.id)
-    const { error: deleteError } = await supabase.from("asignaciones_enero_abril").delete().in("grupo_id", grupoIds)
-
-    if (deleteError) {
-      console.error("Error deleting existing assignments:", deleteError)
-      return NextResponse.json(
-        { error: "Error al eliminar asignaciones existentes: " + deleteError.message },
-        { status: 500 },
-      )
-    }
-
-    console.log("Deleted existing assignments")
-
-    // Preparar datos para el algoritmo de asignación
-    const gruposConHorarios = grupos.map((grupo) => {
-      try {
-        const horarios = typeof grupo.horarios === "string" ? JSON.parse(grupo.horarios) : grupo.horarios
-        return {
-          ...grupo,
-          horarios: Array.isArray(horarios) ? horarios : [],
-        }
-      } catch (error) {
-        console.error(`Error parsing horarios for grupo ${grupo.id}:`, error)
-        return {
-          ...grupo,
-          horarios: [],
-        }
-      }
-    })
-
-    // Algoritmo de asignación de aulas
-    const asignaciones = []
-    const aulasDisponibles = [...aulas]
-
-    // Ordenar grupos por cantidad de alumnos (de mayor a menor)
-    gruposConHorarios.sort((a, b) => b.alumnos - a.alumnos)
-
-    console.log("Starting assignment algorithm with grupos:", gruposConHorarios.length)
-
-    // Para cada grupo
+    const asignaciones = [];
     for (const grupo of gruposConHorarios) {
-      // Para cada horario del grupo
       for (const horario of grupo.horarios) {
-        // Encontrar la materia asociada al grupo
-        const materia = materias.find((m) => m.id === grupo.materia_id)
-        if (!materia) {
-          console.log(`No materia found for grupo ${grupo.id}, materia_id ${grupo.materia_id}`)
-          continue
-        }
+        const materia = materias.find((m: any) => m.id === grupo.materia_id);
+        if (!materia) continue;
 
-        // Buscar aulas disponibles para este horario
-        const aulasDisponiblesParaHorario = aulasDisponibles.filter((aula) => {
-          // Verificar si el aula ya está asignada en este horario
+        const aulasDisponiblesParaHorario = aulas.filter((aula: any) => {
           const aulaOcupada = asignaciones.some(
-            (asignacion) =>
-              asignacion.aula_id === aula.id &&
-              asignacion.dia === horario.dia &&
-              ((asignacion.hora_inicio <= horario.hora_inicio && asignacion.hora_fin > horario.hora_inicio) ||
-                (asignacion.hora_inicio < horario.hora_fin && asignacion.hora_fin >= horario.hora_fin)),
-          )
-          // Verificar si el aula tiene capacidad suficiente
-          const capacidadSuficiente = aula.capacidad >= grupo.alumnos
+            (a: any) =>
+              a.aula_id === aula.id &&
+              a.dia === horario.dia &&
+              ((a.hora_inicio <= horario.hora_inicio && a.hora_fin > horario.hora_inicio) ||
+                (a.hora_inicio < horario.hora_fin && a.hora_fin >= horario.hora_fin))
+          );
+          return !aulaOcupada && aula.capacidad >= grupo.alumnos;
+        });
+        
+        aulasDisponiblesParaHorario.sort((a: any, b: any) => a.capacidad - b.capacidad);
+        const aulaAsignada = aulasDisponiblesParaHorario.find((aula: any) => aula.capacidad >= grupo.alumnos);
 
-          return !aulaOcupada && capacidadSuficiente
-        })
-
-        // Ordenar aulas por capacidad (de menor a mayor, pero suficiente)
-        aulasDisponiblesParaHorario.sort((a, b) => a.capacidad - b.capacidad)
-
-        // Asignar el aula más pequeña que tenga capacidad suficiente
-        const aulaAsignada = aulasDisponiblesParaHorario.find((aula) => aula.capacidad >= grupo.alumnos)
-
-        // Crear la asignación
-        asignaciones.push({
-          grupo_id: grupo.id,
-          aula_id: aulaAsignada?.id || null,
-          materia_id: grupo.materia_id,
-          dia: horario.dia,
-          hora_inicio: horario.hora_inicio,
-          hora_fin: horario.hora_fin,
-          turno: grupo.turno,
-          carrera_id: materia.carrera_id || null, // Añadir carrera_id desde la materia
-        })
+        asignaciones.push([
+          grupo.id,
+          aulaAsignada?.id || null,
+          grupo.materia_id,
+          horario.dia,
+          horario.hora_inicio,
+          horario.hora_fin,
+          grupo.turno,
+          materia.carrera_id || null,
+        ]);
       }
     }
 
-    console.log("Created assignments:", asignaciones.length)
-
-    // Si no hay asignaciones, devolver un error
-    if (asignaciones.length === 0) {
-      return NextResponse.json({ error: "No se pudieron crear asignaciones para ningún grupo" }, { status: 404 })
+    // 5. Insertar nuevas asignaciones
+    if (asignaciones.length > 0) {
+      await connection.query(
+        "INSERT INTO asignaciones_enero_abril (grupo_id, aula_id, materia_id, dia, hora_inicio, hora_fin, turno, carrera_id) VALUES ?",
+        [asignaciones]
+      );
     }
+    
+    // --- Fin de la Transacción ---
+    await connection.commit();
 
-    // Insertar nuevas asignaciones
-    const { data: insertedData, error: insertError } = await supabase
-      .from("asignaciones_enero_abril")
-      .insert(asignaciones)
-      .select()
+    const [insertedData] = await pool.query("SELECT * FROM asignaciones_enero_abril WHERE grupo_id IN (?)", [grupoIds]);
 
-    if (insertError) {
-      console.error("Error inserting new assignments:", insertError)
-      return NextResponse.json({ error: "Error al crear nuevas asignaciones: " + insertError.message }, { status: 500 })
-    }
+    return NextResponse.json(insertedData);
 
-    console.log("Successfully inserted assignments:", insertedData?.length || 0)
-    return NextResponse.json(insertedData || [])
-  } catch (error) {
-    console.error("Error in classroom assignment:", error)
-    return NextResponse.json(
-      { error: "Error al crear nuevas asignaciones: " + (error instanceof Error ? error.message : String(error)) },
-      { status: 500 },
-    )
+  } catch (error: any) {
+    await connection.rollback();
+    console.error("Error en asignación de aulas:", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
