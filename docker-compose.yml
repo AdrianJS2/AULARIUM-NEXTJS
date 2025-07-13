@@ -1,0 +1,34 @@
+# docker-compose.yml
+version: '3.8'
+services:
+  # Servicio de la Base de Datos MySQL
+  db:
+    image: mysql:8.0
+    container_name: aularium-mysql-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 'your_strong_root_password' # ¡Cambia esta contraseña!
+      MYSQL_DATABASE: 'aularium_db'
+      MYSQL_USER: 'aularium_user'
+      MYSQL_PASSWORD: 'your_strong_user_password' # ¡Y esta también!
+    ports:
+      # Expone el puerto de MySQL a tu máquina local
+      - "3306:3306"
+    volumes:
+      # Persiste los datos de la base de datos en tu máquina local
+      - ./mysql-data:/var/lib/mysql
+
+  # Servicio de Adminer (Gestor Visual de BD)
+  adminer:
+    image: adminer
+    container_name: aularium-adminer
+    restart: unless-stopped
+    ports:
+      # Accede a Adminer en http://localhost:8080
+      - "8080:8080"
+    depends_on:
+      - db
+
+# Define el volumen para persistir los datos
+volumes:
+  mysql-data:
