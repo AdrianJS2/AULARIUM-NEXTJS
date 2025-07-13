@@ -1,9 +1,7 @@
 // app/page.tsx
-
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { supabase, getSessionSafely } from "@/lib/supabase"
+import { useState, useEffect } from "react"
 import Auth from "../components/Auth"
 import ProfesorManagement from "../components/ProfesorManagement"
 import MateriaGrupoManagement from "../components/MateriaGrupoManagement"
@@ -17,21 +15,13 @@ import { Toaster } from "@/components/ui/toaster"
 import { useAuth } from "@/lib/auth"
 import UserManagement from "@/components/UserManagement"
 
-const ADMIN_ROLES = ["admin", "administrador"]
-
 export default function Home() {
-  const [session, setSession] = useState<any>(null)
   const [currentSection, setCurrentSection] = useState("dashboard")
   const [selectedPeriod, setSelectedPeriod] = useState("1")
-  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
-  const { isAdmin, userRole, refreshUserRole } = useAuth()
-  const [isMounted, setIsMounted] = useState(false) // 1. Añadimos el estado de montaje
+  const { session, status, isAdmin } = useAuth() // Usar el hook de NextAuth
 
-  // 2. Este useEffect se ejecuta SOLO en el cliente para indicar que ya está montado
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const loading = status === 'loading';
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
@@ -41,31 +31,6 @@ export default function Home() {
     }
   }, [])
 
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const sessionData = await getSessionSafely()
-        setSession(sessionData)
-      } catch (e) {
-        console.error("Failed to fetch session:", e)
-        setSession(null)
-      } finally {
-        setLoading(false)
-      }
-    }
-    checkSession()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session)
-      },
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [])
-  
   const handlePeriodChange = (period: string) => {
     setSelectedPeriod(period)
     const getPeriodoNombre = (periodId: string) => {
@@ -87,9 +52,7 @@ export default function Home() {
     setCurrentSection(section)
   }
 
-  // 3. Lógica de renderizado segura para la hidratación
-  // Si no está montado o está cargando, muestra un loader simple y consistente.
-  if (!isMounted || loading) {
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
@@ -98,7 +61,6 @@ export default function Home() {
     )
   }
 
-  // 4. Una vez montado, ahora sí podemos renderizar la lógica condicional
   if (!session) {
     return (
       <>
@@ -133,7 +95,6 @@ export default function Home() {
         onNavigate={handleNavigate}
         selectedPeriod={selectedPeriod}
         onPeriodChange={handlePeriodChange}
-        isAdmin={isAdmin}
       >
         {renderCurrentSection()}
       </MainLayout>
