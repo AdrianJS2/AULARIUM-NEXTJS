@@ -6,6 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Users, BookOpen, School, Calendar, TrendingUp, BarChart3, PieChart, Activity, User } from "lucide-react"
+import { MigrationStatus } from './MigrationStatus';
 
 interface DashboardProps {
   selectedPeriod: string
@@ -400,6 +401,8 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
   if (isUserAdmin) {
     // Admin Dashboard - Global View
     return (
+        
+  
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -703,6 +706,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
         </div>
+        {isUserAdmin && <MigrationStatus />}
       </div>
     )
   } else {
@@ -977,7 +981,10 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </div>
           </CardContent>
         </Card>
+        
       </div>
+      
     )
   }
+  
 }
