@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
+import { featureFlags } from '@/lib/config';
 import { toast } from "@/components/ui/use-toast"
 import { Clock, Calendar, CheckCircle2, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +32,7 @@ export default function DisponibilidadProfesor({
   onCancel,
   readOnly = false,
 }: DisponibilidadProfesorProps) {
+  const useMySqlApi = featureFlags.profesores === 'mysql'; // Establecer useMySqlApi en función de featureFlags.profesores
   const [disponibilidad, setDisponibilidad] = useState<Record<string, Record<string, boolean>>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -41,67 +43,47 @@ export default function DisponibilidadProfesor({
   })
 
   // Cargar la disponibilidad actual del profesor
-  useEffect(() => {
-    async function cargarDisponibilidad() {
-      try {
-        setIsLoading(true)
+ // REEMPLAZA TU useEffect ACTUAL CON ESTE
+useEffect(() => {
+  async function cargarDisponibilidad() {
+    if (!profesorId) return;
+    setIsLoading(true);
+    try {
+      let profesor: { nombre: string; disponibilidad: any } | null = null;
 
-        // Obtener información del profesor
-        const { data: profesor, error: profesorError } = await supabase
-          .from("profesores")
-          .select("nombre, disponibilidad")
-          .eq("id", profesorId)
-          .single()
-
-        if (profesorError) throw profesorError
-
-        setNombreProfesor(profesor.nombre || "")
-
-        // Inicializar la estructura de disponibilidad
-        const disponibilidadInicial: Record<string, Record<string, boolean>> = {}
-
-        DIAS.forEach((dia) => {
-          disponibilidadInicial[dia] = {}
-          HORAS.forEach((hora) => {
-            disponibilidadInicial[dia][hora] = false
-          })
-        })
-
-        // Si el profesor ya tiene disponibilidad guardada, cargarla
-        if (profesor.disponibilidad) {
-          console.log("Disponibilidad cargada:", JSON.stringify(profesor.disponibilidad, null, 2))
-
-          // Iterar sobre cada día en la disponibilidad guardada
-          Object.keys(profesor.disponibilidad).forEach((dia) => {
-            if (DIAS.includes(dia) && profesor.disponibilidad[dia]) {
-              // Iterar sobre cada hora en ese día
-              Object.keys(profesor.disponibilidad[dia]).forEach((hora) => {
-                if (HORAS.includes(hora)) {
-                  disponibilidadInicial[dia][hora] = profesor.disponibilidad[dia][hora] === true
-                }
-              })
-            }
-          })
-        }
-
-        setDisponibilidad(disponibilidadInicial)
-        actualizarResumen(disponibilidadInicial)
-      } catch (error) {
-        console.error("Error al cargar disponibilidad:", error)
-        toast({
-          title: "Error",
-          description: "No se pudo cargar la disponibilidad del profesor",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoading(false)
+      // --- Lógica condicional ---
+      if (useMySqlApi) {
+        const response = await fetch(`/api/profesores/disponibilidad?id=${profesorId}`);
+        if (!response.ok) throw new Error("No se pudo cargar desde la API");
+        profesor = await response.json();
+      } else {
+        const { data, error } = await supabase.from("profesores").select("nombre, disponibilidad").eq("id", profesorId).single();
+        if (error) throw error;
+        profesor = data;
       }
-    }
 
-    if (profesorId) {
-      cargarDisponibilidad()
+      setNombreProfesor(profesor?.nombre || "");
+      const disponibilidadGuardada = profesor?.disponibilidad || {};
+      const disponibilidadInicial: Record<string, Record<string, boolean>> = {};
+      DIAS.forEach((dia) => {
+        disponibilidadInicial[dia] = {};
+        HORAS.forEach((hora) => {
+          disponibilidadInicial[dia][hora] = disponibilidadGuardada[dia]?.[hora] === true;
+        });
+      });
+
+      setDisponibilidad(disponibilidadInicial);
+      actualizarResumen(disponibilidadInicial);
+
+    } catch (error) {
+      console.error("Error al cargar disponibilidad:", error);
+      toast({ title: "Error", description: "No se pudo cargar la disponibilidad.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
-  }, [profesorId])
+  }
+  cargarDisponibilidad();
+}, [profesorId, useMySqlApi]); // <-- AÑADE useMySqlApi A LAS DEPENDENCIAS
 
   // Actualizar el resumen de disponibilidad
   const actualizarResumen = (disp: Record<string, Record<string, boolean>>) => {
@@ -175,54 +157,33 @@ export default function DisponibilidadProfesor({
 
   // Guardar la disponibilidad
   const handleSave = async () => {
+    setIsSaving(true);
     try {
-      setIsSaving(true)
-
-      console.log("Guardando disponibilidad:", JSON.stringify(disponibilidad, null, 2))
-
-      // Asegurarse de que la estructura de datos sea correcta antes de guardar
-      const disponibilidadFormateada = { ...disponibilidad }
-
-      // Verificar que la estructura sea correcta para cada día y hora
-      DIAS.forEach((dia) => {
-        if (!disponibilidadFormateada[dia]) {
-          disponibilidadFormateada[dia] = {}
-        }
-
-        HORAS.forEach((hora) => {
-          // Asegurarse de que cada hora tenga un valor booleano explícito
-          disponibilidadFormateada[dia][hora] = disponibilidadFormateada[dia][hora] === true
-        })
-      })
-
-      console.log("Disponibilidad formateada para guardar:", JSON.stringify(disponibilidadFormateada, null, 2))
-
-      const { error } = await supabase
-        .from("profesores")
-        .update({ disponibilidad: disponibilidadFormateada })
-        .eq("id", profesorId)
-
-      if (error) throw error
-
-      toast({
-        title: "Éxito",
-        description: "Disponibilidad guardada correctamente",
-      })
-
-      if (onSave) {
-        onSave()
+      const payload = { profesorId, disponibilidad };
+      
+      // --- Lógica condicional ---
+      if (useMySqlApi) {
+        const response = await fetch('/api/profesores/disponibilidad', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error("Error al guardar en la API");
+      } else {
+        const { error } = await supabase.from("profesores").update({ disponibilidad }).eq("id", profesorId);
+        if (error) throw error;
       }
+  
+      toast({ title: "Éxito", description: "Disponibilidad guardada correctamente." });
+      if (onSave) onSave();
+  
     } catch (error) {
-      console.error("Error al guardar disponibilidad:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo guardar la disponibilidad",
-        variant: "destructive",
-      })
+      console.error("Error al guardar disponibilidad:", error);
+      toast({ title: "Error", description: "No se pudo guardar la disponibilidad.", variant: "destructive" });
     } finally {
-      setIsSaving(false)
+      setIsSaving(false);
     }
-  }
+  };
 
   // Verificar si toda una fila está seleccionada
   const isRowSelected = (dia: string) => {
