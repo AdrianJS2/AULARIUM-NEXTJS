@@ -706,7 +706,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
         </div>
-        {isUserAdmin && <MigrationStatus />}
+          {isUserAdmin && <MigrationStatus />}
       </div>
     )
   } else {
