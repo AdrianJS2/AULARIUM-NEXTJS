@@ -73,6 +73,7 @@ export default function Home() {
         case "1": return "Enero-Abril";
         case "2": return "Mayo-Agosto";
         case "3": return "Septiembre-Diciembre";
+        
         default: return "Desconocido";
       }
     }
@@ -117,11 +118,13 @@ export default function Home() {
     switch (currentSection) {
       case "dashboard": return <Dashboard selectedPeriod={selectedPeriod} onNavigate={handleNavigate} />;
       case "profesores": return <ProfesorManagement />;
+      case "materias-grupos": return <MateriaGrupoManagement key={selectedPeriod} selectedPeriod={selectedPeriod} />;
       case "materias-grupos": return <MateriaGrupoManagement selectedPeriod={selectedPeriod} />;
       case "aulas": return <AulaManagement />;
       case "asignacion": return <AsignacionAulas selectedPeriod={selectedPeriod} />;
       case "horarios": return <HorarioGrupo selectedPeriod={selectedPeriod} />;
       case "admin": return <UserManagement />;
+      
       default: return <Dashboard selectedPeriod={selectedPeriod} onNavigate={handleNavigate} />;
     }
   }
