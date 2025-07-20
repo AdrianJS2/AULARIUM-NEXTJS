@@ -65,7 +65,6 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
   const [asignaciones, setAsignaciones] = useState<Asignacion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
 
 
  
@@ -109,13 +108,13 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
 
 
   const fetchData = useCallback(async () => {
-    if (!selectedPeriod || !currentUserId) return;
+    // Usar 'user.id' directamente en lugar de un estado intermedio 'currentUserId'
+    if (!selectedPeriod || !user?.id) return;
     setLoading(true);
     setError(null);
     try {
         if (useMySqlApi) {
-            // Hacemos una única llamada a nuestra nueva API para obtener todos los datos.
-            const response = await fetch(`/api/asignaciones?periodoId=${selectedPeriod}&userId=${currentUserId}`);
+            const response = await fetch(`/api/asignaciones?periodoId=${selectedPeriod}&userId=${user.id}`);
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Error al cargar datos de asignación.');
@@ -131,22 +130,19 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
             setGrupos(parsedGrupos);
             setAsignaciones(data.asignaciones || []);
             setAsignacionesOriginales(JSON.parse(JSON.stringify(data.asignaciones || [])));
-
-        } else {
-            // Lógica de Supabase como fallback (se mantiene por si acaso)
-            console.log("Usando Supabase para Asignacion");
-            const tables = getTableNamesByPeriod(selectedPeriod);
-            const { data: aulasData, error: aulasError } = await supabase.from("aulas").select("*");
-            if (aulasError) throw aulasError;
-            // ... (el resto de tu lógica de Supabase)
-        }
-        
+        } 
     } catch (err: any) {
         setError(err.message);
     } finally {
         setLoading(false);
     }
-}, [selectedPeriod, currentUserId, useMySqlApi]);
+  }, [selectedPeriod, user?.id, useMySqlApi]); // Depender de user.id
+
+  useEffect(() => {
+    if (selectedPeriod) {
+      fetchData();
+    }
+  }, [fetchData, selectedPeriod]);
 
   useEffect(() => {
     if (selectedPeriod) {
@@ -556,7 +552,7 @@ const handleDragEnd = async (event: any) => {
           </>
         ) : (
           <DndContext
-            onDragEnd={isUserAdmin ? handleDragEnd : undefined}
+            onDragEnd={isAdmin ? handleDragEnd : undefined}
             modifiers={[restrictToWindowEdges]}
             collisionDetection={closestCenter}
           >
@@ -574,7 +570,7 @@ const handleDragEnd = async (event: any) => {
                             : "Septiembre-Diciembre"}
                       </h2>
 
-                      {!isUserAdmin && (
+                      {!isAdmin && (
                         <Alert variant="warning" className="mb-0 py-2">
                           <AlertTriangle className="h-4 w-4" />
                           <AlertDescription className="text-sm">
@@ -583,7 +579,7 @@ const handleDragEnd = async (event: any) => {
                         </Alert>
                       )}
 
-                      {isUserAdmin && (
+                      {isAdmin && (
                         <div className="space-x-2 flex flex-wrap gap-2">
                           <Button
                             onClick={asignarAulas}
@@ -658,7 +654,7 @@ const handleDragEnd = async (event: any) => {
                         aulas={aulas}
                         materias={materias}
                         grupos={grupos}
-                        isReadOnly={!isUserAdmin}
+                        isReadOnly={!isAdmin}
                       />
                     </div>
                   )}

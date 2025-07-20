@@ -3,9 +3,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import type { NextRequest } from "next/server";
-import { isAdmin, getUserRole } from "@/lib/auth-server";
 
-// Esta línea es crucial para evitar que Next.js use la caché.
 export const dynamic = 'force-dynamic';
 
 const getTableNames = (periodoId: string) => {
@@ -13,11 +11,10 @@ const getTableNames = (periodoId: string) => {
         case "1": return { materias: "materias_enero_abril", grupos: "grupos_enero_abril", asignaciones: "asignaciones_enero_abril" };
         case "2": return { materias: "materias_mayo_agosto", grupos: "grupos_mayo_agosto", asignaciones: "asignaciones_mayo_agosto" };
         case "3": return { materias: "materias_septiembre_diciembre", grupos: "grupos_septiembre_diciembre", asignaciones: "asignaciones_septiembre_diciembre" };
-        default: throw new Error("Periodo no válido");
+        default: return null; // Devuelve null si el ID no es válido
     }
 };
 
-// GET: Obtener todos los datos necesarios para la vista de Horarios
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const periodoId = searchParams.get('periodoId');
@@ -25,21 +22,24 @@ export async function GET(request: NextRequest) {
     const userRole = searchParams.get('userRole');
     const carreraId = searchParams.get('carreraId');
 
+    // ✅ CORRECCIÓN: Verificación robusta al inicio de la función.
     if (!periodoId || !userId || !userRole) {
-        return NextResponse.json({ error: "Faltan parámetros requeridos" }, { status: 400 });
+        return NextResponse.json({ error: "Faltan parámetros requeridos (periodoId, userId, userRole)." }, { status: 400 });
+    }
+
+    const tables = getTableNames(periodoId);
+    if (!tables) {
+        return NextResponse.json({ error: "El 'periodoId' proporcionado no es válido." }, { status: 400 });
     }
 
     try {
-        const tables = getTableNames(periodoId);
-
-        // 1. Obtener Aulas y Profesores (siempre son todos)
         const [aulas] = await pool.query("SELECT id, nombre FROM aulas");
         const [profesores] = await pool.query("SELECT id, nombre FROM profesores");
         
-        // 2. Obtener Materias (filtradas por rol, si no es admin)
         let materiasQuery = `SELECT * FROM ${tables.materias}`;
         const params: (string | number)[] = [];
         
+        // La lógica de filtrado por rol se mantiene
         if (userRole.toLowerCase() !== 'admin') {
             if (userRole.toLowerCase() === 'coordinador' && carreraId) {
                 materiasQuery += " WHERE carrera_id = ?";
@@ -52,7 +52,6 @@ export async function GET(request: NextRequest) {
         
         const [materias] = await pool.query(materiasQuery, params);
 
-        // 3. Obtener Grupos y Asignaciones (basados en las materias)
         let grupos: any[] = [];
         let asignaciones: any[] = [];
         if (Array.isArray(materias) && materias.length > 0) {
@@ -71,6 +70,6 @@ export async function GET(request: NextRequest) {
 
     } catch (error: any) {
         console.error("API GET /api/horarios Error:", error);
-        return NextResponse.json({ error: "Error al obtener los datos para los horarios.", details: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Error de base de datos al obtener los datos para los horarios.", details: error.message }, { status: 500 });
     }
 }

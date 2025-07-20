@@ -93,8 +93,8 @@ interface FiltrosHorario {
 }
 
 export default function HorarioGrupo({ selectedPeriod }) {
-  const { user, userRole, isAdmin } = useAuth();
-  const currentUserId = user?.id;
+  
+
   const userCarreraId = null; // Este dato ya no se obtiene aquí.
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [materias, setMaterias] = useState<Materia[]>([])
@@ -107,9 +107,9 @@ export default function HorarioGrupo({ selectedPeriod }) {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
-
+  const [activeCycle, setActiveCycle] = useState<string>(selectedPeriod || "1");
   const [autoRefreshAttempts, setAutoRefreshAttempts] = useState(0)
-  const [activeCycle, setActiveCycle] = useState<string>("1") // Default to Enero-Abril
+  // Default to Enero-Abril
   const [filtros, setFiltros] = useState<FiltrosHorario>({
     turno: null,
     busqueda: "",
@@ -131,6 +131,7 @@ export default function HorarioGrupo({ selectedPeriod }) {
     fecha: new Date().toLocaleDateString(),
     horasFrenteGrupo: 0,
   })
+  const { user, isAdmin, loading: authLoading } = useAuth();
   const { toast } = useToast()
   const horarioRef = useRef<HTMLDivElement>(null)
   const useMySqlApi = featureFlags.horarios === 'mysql';
@@ -272,34 +273,7 @@ export default function HorarioGrupo({ selectedPeriod }) {
     }))
   }, [activeCycle])
 
-  useEffect(() => {
-    async function fetchUserData() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (user) {
-          setCurrentUserId(user.id)
-          const admin = await isAdmin(user.id)
-          setIsUserAdmin(admin)
-          const { rol, carrera_id } = await getUserRole(user.id)
-          setUserRole(rol)
-          setUserCarreraId(carrera_id)
 
-          // Iniciar carga de datos después de obtener la información del usuario
-          fetchData()
-        } else {
-          setLoading(false)
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error)
-        setError("Error al obtener datos del usuario")
-        setLoading(false)
-      }
-    }
-
-    fetchUserData()
-  }, [])
 
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
@@ -331,93 +305,93 @@ export default function HorarioGrupo({ selectedPeriod }) {
   }
 
   // Configurar suscripciones en tiempo real a cambios en la base de datos
-  useEffect(() => {
-    if (!effectivePeriod) return
+  // useEffect(() => {
+  //   if (!effectivePeriod) return
 
-    const tables = getTableNamesByPeriod(effectivePeriod)
+  //   const tables = getTableNamesByPeriod(effectivePeriod)
 
-    // Crear canales de suscripción para cada tabla relevante
-    const materiasChannel = supabase
-      .channel("materias-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: tables.materias,
-        },
-        () => {
-          console.log("Cambios detectados en materias, recargando datos...")
-          fetchData()
-        },
-      )
-      .subscribe()
+  //   // Crear canales de suscripción para cada tabla relevante
+  //   const materiasChannel = supabase
+  //     .channel("materias-changes")
+  //     .on(
+  //       "postgres_changes",
+  //       {
+  //         event: "*",
+  //         schema: "public",
+  //         table: tables.materias,
+  //       },
+  //       () => {
+  //         console.log("Cambios detectados en materias, recargando datos...")
+  //         fetchData()
+  //       },
+  //     )
+  //     .subscribe()
 
-    const gruposChannel = supabase
-      .channel("grupos-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: tables.grupos,
-        },
-        () => {
-          console.log("Cambios detectados en grupos, recargando datos...")
-          fetchData()
-        },
-      )
-      .subscribe()
+  //   const gruposChannel = supabase
+  //     .channel("grupos-changes")
+  //     .on(
+  //       "postgres_changes",
+  //       {
+  //         event: "*",
+  //         schema: "public",
+  //         table: tables.grupos,
+  //       },
+  //       () => {
+  //         console.log("Cambios detectados en grupos, recargando datos...")
+  //         fetchData()
+  //       },
+  //     )
+  //     .subscribe()
 
-    const asignacionesChannel = supabase
-      .channel("asignaciones-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: tables.asignaciones,
-        },
-        () => {
-          console.log("Cambios detectados en asignaciones, recargando datos...")
-          fetchData()
-        },
-      )
-      .subscribe()
+  //   const asignacionesChannel = supabase
+  //     .channel("asignaciones-changes")
+  //     .on(
+  //       "postgres_changes",
+  //       {
+  //         event: "*",
+  //         schema: "public",
+  //         table: tables.asignaciones,
+  //       },
+  //       () => {
+  //         console.log("Cambios detectados en asignaciones, recargando datos...")
+  //         fetchData()
+  //       },
+  //     )
+  //     .subscribe()
 
-    // Limpiar suscripciones al desmontar
-    return () => {
-      supabase.removeChannel(materiasChannel)
-      supabase.removeChannel(gruposChannel)
-      supabase.removeChannel(asignacionesChannel)
-    }
-  }, [effectivePeriod])
+  //   // Limpiar suscripciones al desmontar
+  //   return () => {
+  //     supabase.removeChannel(materiasChannel)
+  //     supabase.removeChannel(gruposChannel)
+  //     supabase.removeChannel(asignacionesChannel)
+  //   }
+  // }, [effectivePeriod])
 
   // Efecto para recargar automáticamente hasta detectar materias (máximo 2 intentos)
-  useEffect(() => {
-    // Solo intentar recargar si ya se ha cargado una vez pero no hay materias
-    if (!loading && materias.length === 0 && autoRefreshAttempts < 2) {
-      console.log(`Intento automático de recarga #${autoRefreshAttempts + 1} para detectar materias`)
+  // useEffect(() => {
+  //   // Solo intentar recargar si ya se ha cargado una vez pero no hay materias
+  //   if (!loading && materias.length === 0 && autoRefreshAttempts < 2) {
+  //     console.log(`Intento automático de recarga #${autoRefreshAttempts + 1} para detectar materias`)
 
-      // Esperar un momento antes de intentar recargar
-      const timer = setTimeout(() => {
-        fetchData()
-        setAutoRefreshAttempts((prev) => prev + 1)
-      }, 1500) // 1.5 segundos entre intentos
+  //     // Esperar un momento antes de intentar recargar
+  //     const timer = setTimeout(() => {
+  //       fetchData()
+  //       setAutoRefreshAttempts((prev) => prev + 1)
+  //     }, 1500) // 1.5 segundos entre intentos
 
-      return () => clearTimeout(timer)
-    }
-  }, [loading, materias.length, autoRefreshAttempts])
+  //     return () => clearTimeout(timer)
+  //   }
+  // }, [loading, materias.length, autoRefreshAttempts])
 
   // Efecto para cargar datos cuando cambia el ciclo
-  useEffect(() => {
-    if (currentUserId) {
-      // Resetear el grupo seleccionado al cambiar de ciclo
-      setSelectedGrupo(null)
-      // Cargar datos del nuevo ciclo
-      fetchData()
-    }
-  }, [activeCycle])
+  // useEffect(() => {
+  //   if (currentUserId) {
+  //     // Resetear el grupo seleccionado al cambiar de ciclo
+  //     setSelectedGrupo(null)
+  //     // Cargar datos del nuevo ciclo
+  //     fetchData()
+  //   }
+  // }, [activeCycle])
 
   useEffect(() => {
     if (selectedGrupo) {
@@ -451,34 +425,55 @@ export default function HorarioGrupo({ selectedPeriod }) {
 
   // Modify the fetchData function to filter data based on admin status
 
-  const fetchData = useCallback(async () => {
-    if (!selectedPeriod || !currentUserId || !userRole) return;
-    setLoading(true);
-    try {
-        if (useMySqlApi) {
-            const response = await fetch(`/api/horarios?periodoId=${selectedPeriod}&userId=${currentUserId}&userRole=${userRole}&carreraId=${userCarreraId || ''}`);
-            if (!response.ok) throw new Error('Error al cargar datos desde la API.');
-            const data = await response.json();
-            
-            setAulas(data.aulas || []);
-            setProfesores(data.profesores || []);
-            setMaterias(data.materias || []);
-            const parsedGrupos = (data.grupos || []).map((g: Grupo) => ({ ...g, horarios: Array.isArray(g.horarios) ? g.horarios : JSON.parse(g.horarios as any || "[]") }));
-            setGrupos(parsedGrupos);
-            setAsignaciones(data.asignaciones || []);
-        } else {
-            // Lógica de fallback para Supabase...
-        }
-    } catch (err: any) {
-        toast({ title: "Error de Carga", description: err.message, variant: "destructive" });
-    } finally {
-        setLoading(false);
-    }
-}, [selectedPeriod, currentUserId, userRole, userCarreraId, useMySqlApi, toast]);
+  const fetchData = useCallback(async (periodoId: string) => {
+    // Solo se ejecuta si ya tenemos un usuario
+    if (!user) return;
 
-useEffect(() => {
-    fetchData();
-}, [fetchData]);
+    setLoading(true);
+    setError(null);
+    setSelectedGrupo(null);
+    setGrupos([]); // Limpiamos los grupos para evitar mostrar datos viejos
+
+    try {
+      if (useMySqlApi) {
+        const params = new URLSearchParams({
+          periodoId: periodoId,
+          userId: user.id,
+          userRole: user.rol,
+        });
+        if (user.carrera_id) {
+          params.append('carreraId', user.carrera_id.toString());
+        }
+
+        const response = await fetch(`/api/horarios?${params.toString()}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error en la respuesta de la API.');
+        }
+        
+        const data = await response.json();
+        setAulas(data.aulas || []);
+        setProfesores(data.profesores || []);
+        setMaterias(data.materias || []);
+        const parsedGrupos = (data.grupos || []).map((g: Grupo) => ({ ...g, horarios: Array.isArray(g.horarios) ? g.horarios : JSON.parse(g.horarios as any || "[]") }));
+        setGrupos(parsedGrupos);
+        setAsignaciones(data.asignaciones || []);
+      }
+    } catch (err: any) {
+      setError(err.message);
+      toast({ title: "Error de Carga", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [user, useMySqlApi, toast]);
+
+  useEffect(() => {
+    // Esperamos a que la autenticación termine y tengamos un usuario.
+    if (!authLoading && user) {
+      fetchData(activeCycle);
+    }
+  }, [activeCycle, user, authLoading, fetchData]);
+
 
 // --- LÓGICA PARA GENERAR EL HORARIO (CORREGIDA) ---
 const generateHorario = useCallback(() => {
@@ -818,7 +813,7 @@ useEffect(() => {
     <Card className="bg-[#0f172a] text-white border-none">
       <CardContent className="p-2 sm:p-6">
         {/* Tabs para seleccionar el ciclo */}
-        <Tabs defaultValue={activeCycle} onValueChange={setActiveCycle} className="mb-6">
+        <Tabs value={activeCycle} onValueChange={setActiveCycle} className="mb-6">
           <TabsList className="w-full bg-[#1e293b] border-b border-[#334155]">
             <TabsTrigger value="1" className="flex-1 data-[state=active]:bg-[#3b82f6] data-[state=active]:text-white">
               Enero-Abril
@@ -830,6 +825,7 @@ useEffect(() => {
               Septiembre-Diciembre
             </TabsTrigger>
           </TabsList>
+     
 
           {/* Contenido para todos los tabs */}
           <div className="mt-4">

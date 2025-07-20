@@ -1,35 +1,42 @@
+// RUTA: app/api/auth/session/route.ts
+
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
-import { cookies } from 'next/headers'; // Usamos cookies para el token
 import pool from '@/lib/db';
 
+interface TokenPayload {
+    id: string;
+    email: string;
+    rol: string;
+}
+
+// ✅ ASEGÚRATE DE QUE ESTA LÍNEA ESTÉ PRESENTE
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
-    const cookieStore = cookies();
-    const token = cookieStore.get('authToken')?.value;
-
-    if (!token) {
-        return NextResponse.json({ error: 'No autorizado: No hay token.' }, { status: 401 });
-    }
-
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { userId: string };
+        const token = cookies().get('authToken')?.value;
 
-        const [rows]: [any[], any] = await pool.query(
-            'SELECT id, nombre, email, rol, carrera_id FROM usuarios WHERE id = ?',
-            [decoded.userId]
+        if (!token) {
+            return NextResponse.json({ user: null });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as TokenPayload;
+
+        const [rows]: any = await pool.query(
+            "SELECT id, email, rol, nombre, carrera_id FROM usuarios WHERE id = ?",
+            [decoded.id]
         );
 
         if (rows.length === 0) {
-            return NextResponse.json({ error: 'No autorizado: Usuario no encontrado.' }, { status: 401 });
+            return NextResponse.json({ user: null });
         }
 
-        const user = rows[0];
-        
-        // No devolvemos la contraseña, solo los datos necesarios
-        return NextResponse.json({ user });
+        return NextResponse.json({ user: rows[0] });
 
     } catch (error) {
-        // Esto captura tokens expirados o inválidos
-        return NextResponse.json({ error: 'No autorizado: Token inválido o expirado.' }, { status: 401 });
+        console.error("Error en ruta de sesión (token inválido/expirado):", error);
+        return NextResponse.json({ user: null });
     }
 }
