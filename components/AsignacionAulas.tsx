@@ -1,12 +1,13 @@
 "use client"
 import { featureFlags } from '@/lib/config'; // Importar feature flags
 import { useState, useEffect, useCallback } from "react"
-import { supabase, fetchWithRetry } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle, AlertTriangle } from "@/components/ui/alert"
 // import { isAdmin, getUserRole } from "@/lib/auth"
-import { useAuth } from "@/lib/auth";
+
 import HorarioSemanal from "./HorarioSemanal"
 import { DndContext, closestCenter } from "@dnd-kit/core"
 import { restrictToWindowEdges } from "@dnd-kit/modifiers"
@@ -54,7 +55,8 @@ interface Props {
 }
 
 export default function AsignacionAulas({ selectedPeriod }: Props) {
-  const { user, userRole, isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
+
     const currentUserId = user?.id;
     const userCarreraId = null; // Este dato ya no se obtiene aquí.
   const [grupos, setGrupos] = useState<Grupo[]>([])
@@ -104,75 +106,7 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
     }
   }
 
-  useEffect(() => {
-    async function fetchUserData() {
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
 
-        if (userError) {
-          console.error("Error fetching user:", userError)
-          toast({
-            title: "Error de autenticación",
-            description: "No se pudo obtener la información del usuario. Por favor, inicie sesión nuevamente.",
-            variant: "destructive",
-          })
-          return
-        }
-
-        if (user) {
-          setCurrentUserId(user.id)
-          const admin = await isAdmin(user.id)
-          setIsUserAdmin(admin)
-          const { rol, carrera_id } = await getUserRole(user.id)
-          setUserRole(rol)
-          setUserCarreraId(carrera_id)
-
-          // Obtener datos completos del usuario
-          const { data: userData, error: userDataError } = await supabase
-            .from("usuarios")
-            .select("*")
-            .eq("id", user.id)
-            .single()
-
-          if (!userDataError && userData) {
-            setUsuarioActual(userData)
-
-            // Si el usuario tiene una carrera asignada, obtener el nombre de la carrera
-            if (carrera_id) {
-              const { data: carreraData, error: carreraError } = await supabase
-                .from("carreras")
-                .select("nombre")
-                .eq("id", carrera_id)
-                .single()
-
-              if (!carreraError && carreraData) {
-                setCarreraNombre(carreraData.nombre)
-              }
-            }
-          }
-        } else {
-          console.warn("No user found")
-          toast({
-            title: "No autenticado",
-            description: "Por favor, inicie sesión para acceder a esta funcionalidad.",
-            variant: "destructive",
-          })
-        }
-      } catch (error) {
-        console.error("Error in fetchUserData:", error)
-        toast({
-          title: "Error",
-          description: "Ocurrió un error al obtener los datos del usuario. Por favor, recargue la página.",
-          variant: "destructive",
-        })
-      }
-    }
-
-    fetchUserData()
-  }, [])
 
   const fetchData = useCallback(async () => {
     if (!selectedPeriod || !currentUserId) return;
@@ -223,34 +157,7 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
   }, [fetchData, selectedPeriod])
 
   // Configurar suscripción en tiempo real a las asignaciones
-  useEffect(() => {
-    if (selectedPeriod) {
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      // Suscribirse a cambios en la tabla de asignaciones
-      const channel = supabase
-        .channel("asignaciones-changes")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: tables.asignaciones,
-          },
-          () => {
-            // Actualizar datos cuando haya cambios
-            console.log("Received realtime update for asignaciones")
-            fetchData()
-          },
-        )
-        .subscribe()
-
-      // Limpiar suscripción al desmontar
-      return () => {
-        supabase.removeChannel(channel)
-      }
-    }
-  }, [selectedPeriod, fetchData])
+ 
 
   // Función para verificar si hay cambios pendientes
   const verificarCambiosPendientes = useCallback(() => {
@@ -298,84 +205,36 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
 
   // Función para solicitar asignación de aulas
   const handleSolicitarAsignacion = async () => {
-    if (!selectedPeriod || !usuarioActual) {
-      toast({
-        title: "Error",
-        description: "Falta información necesaria para realizar la solicitud",
-        variant: "destructive",
-      })
-      return
+    if (!selectedPeriod || !user) {
+      toast({ title: "Error", description: "Falta información del usuario o del período.", variant: "destructive" });
+      return;
     }
 
-    setSolicitando(true)
+    setSolicitando(true);
     try {
-      // Obtener todos los administradores
-      const response = await fetch("/api/admins")
+      const response = await fetch("/api/notificaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: 'SOLICITUD_ASIGNACION',
+          periodoId: selectedPeriod,
+          solicitanteId: user.id, // Se envía el ID del solicitante
+        }),
+      });
+      
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Error al obtener administradores")
+        const errorData = await response.json();
+        throw new Error(errorData.error || "No se pudo enviar la solicitud.");
       }
+      
+      toast({ title: "Solicitud Enviada", description: "Los administradores han sido notificados." });
 
-      const { admins } = await response.json()
-
-      if (!admins || admins.length === 0) {
-        throw new Error("No hay administradores disponibles")
-      }
-
-      // Determinar el nombre del periodo
-      const nombrePeriodo =
-        selectedPeriod === "1" ? "Enero-Abril" : selectedPeriod === "2" ? "Mayo-Agosto" : "Septiembre-Diciembre"
-
-      // Crear notificaciones para cada administrador
-      for (const admin of admins) {
-        const notificacionData = {
-          tipo: "SOLICITUD_ASIGNACION",
-          mensaje: `${usuarioActual.nombre} solicita asignación de aulas para el periodo ${nombrePeriodo}`,
-          datos: {
-            periodo: selectedPeriod,
-            solicitante: {
-              id: usuarioActual.id,
-              nombre: usuarioActual.nombre,
-              email: usuarioActual.email,
-            },
-            carrera: carreraNombre,
-            fecha: new Date().toISOString(),
-          },
-          destinatario_id: admin.id,
-          remitente_id: usuarioActual.id, // Añadir el remitente_id
-        }
-
-        const notifResponse = await fetch("/api/notificaciones", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(notificacionData),
-        })
-
-        if (!notifResponse.ok) {
-          const errorData = await notifResponse.json()
-          throw new Error(errorData.error || `Error al enviar notificación a ${admin.email}`)
-        }
-      }
-
-      toast({
-        title: "Solicitud enviada",
-        description:
-          "Se ha enviado la solicitud de asignación de aulas a los administradores. Recibirás una notificación cuando sea procesada.",
-      })
-    } catch (error) {
-      console.error("Error al solicitar asignación:", error)
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error ? error.message : "No se pudo enviar la solicitud. Por favor, intente nuevamente.",
-        variant: "destructive",
-      })
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     } finally {
-      setSolicitando(false)
+      setSolicitando(false);
     }
-  }
+  };
 
   async function asignarAulas() {
     if (!selectedPeriod) {
@@ -524,157 +383,118 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
     }
 }
 
-  const handleDragEnd = async (event: any) => {
-    // Verificar si el usuario es administrador
-    if (!isUserAdmin) {
+const handleDragEnd = async (event: any) => {
+  // 1. Verificación de permisos: Ahora usa 'isAdmin' del hook 'useAuth'.
+  if (!isAdmin) {
       toast({
-        title: "Acceso denegado",
-        description: "Solo los administradores pueden modificar las asignaciones de aulas",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const { active, over } = event
-
-    if (!over) return
-
-    const draggedAsignacionId = active.id.toString().split("-")[1]
-    const droppedZoneId = over.id.toString()
-
-    if (!draggedAsignacionId) return
-
-    try {
-      
-      // Convertir a números
-      const asignacionId = Number.parseInt(draggedAsignacionId)
-      let newAulaId: number | null = null
-
-      if (droppedZoneId.startsWith("zona-desasignar-")) {
-        newAulaId = null
-      } else if (droppedZoneId.startsWith("aula-")) {
-        const droppedAulaId = droppedZoneId.split("-")[1]
-        newAulaId = Number.parseInt(droppedAulaId)
-
-        const draggedAsignacion = asignaciones.find((a) => a.id === asignacionId)
-        if (draggedAsignacion) {
-          const conflictingAsignacion = asignaciones.find(
-            (a) =>
-              a.aula_id === newAulaId &&
-              a.dia === draggedAsignacion.dia &&
-              a.id !== draggedAsignacion.id &&
-              ((a.hora_inicio <= draggedAsignacion.hora_inicio && a.hora_fin > draggedAsignacion.hora_inicio) ||
-                (a.hora_inicio < draggedAsignacion.hora_fin && a.hora_fin >= draggedAsignacion.hora_fin)),
-          )
-
-          if (conflictingAsignacion) {
-            toast({
-              title: "Error de asignación",
-              description: "Esta aula ya está ocupada en este horario.",
-              variant: "destructive",
-            })
-            return
-          }
-        }
-      } else {
-        return
-      }
-
-      // Verificar si realmente hay un cambio
-      const asignacionOriginal = asignaciones.find((a) => a.id === asignacionId)
-      if (asignacionOriginal && asignacionOriginal.aula_id === newAulaId) {
-        // No hay cambio real, salir
-        console.log("No se detectó cambio real, la asignación ya tenía esa aula")
-        return
-      }
-
-      console.log(`Actualizando asignación ${asignacionId}: aula_id de ${asignacionOriginal?.aula_id} a ${newAulaId}`)
-
-      // Mostrar indicador de carga
-      setGuardando(true)
-
-      // Actualizar en la base de datos inmediatamente
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      // Intentar actualizar con múltiples reintentos si es necesario
-      let actualizado = false
-      let intentos = 0
-      let error = null
-
-      while (!actualizado && intentos < 3) {
-        intentos++
-        try {
-          console.log(
-            `Intento ${intentos} de guardar en la base de datos: asignación ${asignacionId}, aula_id=${newAulaId}`,
-          )
-
-          const { data, error: updateError } = await supabase
-            .from(tables.asignaciones)
-            .update({ aula_id: newAulaId })
-            .eq("id", asignacionId)
-            .select()
-
-          if (updateError) {
-            error = updateError
-            console.error(`Error en intento ${intentos}:`, updateError)
-            // Esperar antes de reintentar
-            await new Promise((resolve) => setTimeout(resolve, 500))
-            continue
-          }
-
-          if (data && data.length > 0) {
-            console.log("Actualización exitosa:", data)
-            actualizado = true
-
-            // Actualizar el estado local con los datos de la base de datos
-            setAsignaciones((prevAsignaciones) =>
-              prevAsignaciones.map((asignacion) =>
-                asignacion.id === asignacionId ? { ...asignacion, aula_id: newAulaId } : asignacion,
-              ),
-            )
-
-            // Actualizar también las asignaciones originales para reflejar el nuevo estado
-            setAsignacionesOriginales((prev) =>
-              prev.map((asignacion) =>
-                asignacion.id === asignacionId ? { ...asignacion, aula_id: newAulaId } : asignacion,
-              ),
-            )
-
-            const aula = aulas.find((a) => a.id === newAulaId)
-            toast({
-              title: "Asignación guardada",
-              description: newAulaId
-                ? `Grupo asignado al aula ${aula?.nombre || ""} y guardado en la base de datos`
-                : "Grupo movido a desasignados y guardado en la base de datos",
-            })
-          } else {
-            console.warn("La actualización no reportó errores pero no devolvió datos", data)
-            error = new Error("La actualización no devolvió datos")
-          }
-        } catch (e) {
-          error = e
-          console.error(`Error en intento ${intentos}:`, e)
-        }
-      }
-
-      if (!actualizado) {
-        throw error || new Error("No se pudo actualizar después de múltiples intentos")
-      }
-    
-  }catch (error) {
-      console.error("Error al actualizar asignación:", error)
-      toast({
-        title: "Error",
-        description: "Error al actualizar la asignación en la base de datos. Por favor, intente de nuevo.",
-        variant: "destructive",
-      })
-
-      // Recargar los datos para asegurar consistencia
-      await fetchData()
-    } finally {
-      setGuardando(false)
-    }
+          title: "Acceso Denegado",
+          description: "Solo los administradores pueden modificar las asignaciones.",
+          variant: "destructive",
+      });
+      return;
   }
+
+  const { active, over } = event;
+  if (!over) return;
+
+  // 2. Lógica de parseo (sin cambios): Se mantiene tu lógica para obtener los IDs.
+  const draggedAsignacionId = parseInt(active.id.toString().split("-")[1], 10);
+  const droppedZoneId = over.id.toString();
+
+  if (isNaN(draggedAsignacionId)) return;
+
+  let nuevaAulaId: number | null = null;
+  if (droppedZoneId.startsWith("aula-")) {
+      nuevaAulaId = parseInt(droppedZoneId.split("-")[1], 10);
+  } else if (!droppedZoneId.startsWith("zona-desasignar-")) {
+      return; // No se soltó en un área válida
+  }
+
+  // 3. Verificación de conflicto (sin cambios): Mantenemos esta validación en el cliente para una UX rápida.
+  const asignacionArrastrada = asignaciones.find((a) => a.id === draggedAsignacionId);
+  if (asignacionArrastrada && nuevaAulaId !== null) {
+      const conflicto = asignaciones.find(a =>
+          a.aula_id === nuevaAulaId &&
+          a.dia === asignacionArrastrada.dia &&
+          a.id !== asignacionArrastrada.id &&
+          ((a.hora_inicio < asignacionArrastrada.hora_fin) && (a.hora_fin > asignacionArrastrada.hora_inicio))
+      );
+
+      if (conflicto) {
+          toast({
+              title: "Conflicto de Horario",
+              description: "El aula ya está ocupada en ese horario. No se puede realizar el cambio.",
+              variant: "destructive",
+          });
+          return;
+      }
+  }
+  
+  // 4. Verificar si realmente hay un cambio (sin cambios).
+  if (asignacionArrastrada?.aula_id === nuevaAulaId) {
+      console.log("No se detectó cambio real de aula.");
+      return;
+  }
+
+  setGuardando(true);
+
+  try {
+      // 5. ¡LA CORRECCIÓN! Llamada a tu API en lugar de a Supabase.
+      const response = await fetch('/api/asignaciones', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              asignacionId: draggedAsignacionId,
+              nuevaAulaId: nuevaAulaId,
+              periodoId: selectedPeriod, // Es crucial enviar el período
+          }),
+      });
+
+      // Si la API responde con un error, lo lanzamos para que lo capture el 'catch'.
+      if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "El servidor rechazó el cambio.");
+      }
+
+      // 6. Éxito: Actualización optimista del estado local.
+      // Esto hace que la UI se sienta instantánea.
+      setAsignaciones(prev =>
+          prev.map(a =>
+              a.id === draggedAsignacionId ? { ...a, aula_id: nuevaAulaId } : a
+          )
+      );
+
+      // También actualizamos la copia original para la detección de cambios futuros.
+       setAsignacionesOriginales(prev =>
+          prev.map(a =>
+              a.id === draggedAsignacionId ? { ...a, aula_id: nuevaAulaId } : a
+          )
+      );
+
+      const aula = aulas.find((a) => a.id === nuevaAulaId);
+      toast({
+          title: "¡Guardado!",
+          description: nuevaAulaId
+              ? `El grupo fue movido al aula ${aula?.nombre || ''}.`
+              : "El grupo fue movido a la zona de 'desasignados'.",
+      });
+
+  } catch (error: any) {
+      // 7. Error: Mostramos el error y recargamos los datos para mantener la consistencia.
+      console.error("Error al actualizar la asignación:", error);
+      toast({
+          title: "Error al Guardar",
+          description: error.message,
+          variant: "destructive",
+      });
+      
+      // Si falla el guardado, es crucial recargar los datos para que la UI
+      // refleje el estado real de la base de datos.
+      await fetchData();
+  } finally {
+      setGuardando(false);
+  }
+} 
 
   return (
     <Card>
@@ -802,27 +622,11 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
                         </div>
                       )}
                       {/* Mostrar el botón solo si el usuario es director */}
-                      {userRole === "director" && (
-                        <Button
-                          onClick={handleSolicitarAsignacion}
-                          disabled={solicitando}
-                          className="bg-orange-web text-white hover:bg-orange-web/90"
-                          showConfirmation={{
-                            message: "Solicitud enviada correctamente",
-                            description:
-                              "Se ha enviado tu solicitud de asignación a la administración. Recibirás una notificación cuando sea procesada.",
-                          }}
-                        >
-                          {solicitando ? (
-                            <>
-                              <span className="animate-spin mr-2">⟳</span>
-                              Enviando...
-                            </>
-                          ) : (
-                            "Solicitar Asignación"
-                          )}
-                        </Button>
-                      )}
+                      {user?.rol === 'director' && !isAdmin && (
+                     <Button onClick={handleSolicitarAsignacion} disabled={solicitando} className="bg-orange-web text-white hover:bg-orange-web/90">
+                       {solicitando ? "Enviando..." : "Solicitar Asignación"}
+                     </Button>
+                  )}
                     </div>
 
                     {asignaciones.length === 0 && (

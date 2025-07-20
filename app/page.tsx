@@ -12,13 +12,10 @@ import Dashboard from "../components/Dashboard";
 import { MainLayout } from "@/components/layout/main-layout";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-// HE AQUÍ EL CAMBIO: Usamos nuestro hook como la única fuente de verdad para la autenticación.
 import { useAuth } from "@/lib/auth"; 
 import UserManagement from "@/components/UserManagement";
 
-// Este es el componente principal que renderiza la aplicación o el login.
 function AppContent() {
-  // Obtenemos el estado de la autenticación desde nuestro hook.
   const { user, loading, isAdmin } = useAuth();
   
   const [currentSection, setCurrentSection] = useState("dashboard");
@@ -54,7 +51,6 @@ function AppContent() {
     setCurrentSection(section);
   };
 
-  // Mientras el hook de autenticación está verificando la sesión, mostramos un loader.
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
@@ -64,7 +60,6 @@ function AppContent() {
     );
   }
 
-  // Si el hook nos dice que NO hay usuario, mostramos el componente de Login.
   if (!user) {
     return (
       <>
@@ -74,7 +69,6 @@ function AppContent() {
     );
   }
 
-  // Si el hook nos dice que SÍ hay un usuario, mostramos la aplicación principal.
   const renderCurrentSection = () => {
     if (currentSection === "admin" && !isAdmin) {
       setTimeout(() => setCurrentSection("dashboard"), 0);
@@ -84,7 +78,6 @@ function AppContent() {
     switch (currentSection) {
       case "dashboard": return <Dashboard selectedPeriod={selectedPeriod} onNavigate={handleNavigate} />;
       case "profesores": return <ProfesorManagement />;
-      // HE AQUÍ LA CORRECCIÓN: Se eliminó el 'case' duplicado.
       case "materias-grupos": return <MateriaGrupoManagement key={selectedPeriod} selectedPeriod={selectedPeriod} />;
       case "aulas": return <AulaManagement />;
       case "asignacion": return <AsignacionAulas key={selectedPeriod} selectedPeriod={selectedPeriod} />;
@@ -110,8 +103,6 @@ function AppContent() {
   );
 }
 
-// El componente Home ahora solo necesita renderizar AppContent.
-// El AuthProvider ya está envolviendo todo desde `layout.tsx`.
 export default function Home() {
   return <AppContent />;
 }

@@ -148,8 +148,10 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   const [activeTab, setActiveTab] = useState("info")
   const [isValidatingHorario, setIsValidatingHorario] = useState(false)
   const [profesoresLoaded, setProfesoresLoaded] = useState(false)
+  const { user, isAdmin } = useAuth();
   const useMySqlApi = featureFlags.materiasGrupos === 'mysql';
-  const { user, userRole, isAdmin } = useAuth();
+  
+
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
       case "1":
@@ -242,122 +244,130 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   }
 
   // Función para cargar todos los profesores directamente
-  const loadAllProfesores = async () => {
-    try {
-        setLoading(true);
-        console.log("Cargando TODOS los profesores desde la API de MySQL...");
+//   const loadAllProfesores = async () => {
+//     try {
+//         setLoading(true);
+//         console.log("Cargando TODOS los profesores desde la API de MySQL...");
 
-        // Usamos fetch para llamar a nuestra API en lugar de Supabase.
-        const response = await fetch('/api/profesores');
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Error al cargar profesores desde la API');
-        }
+//         // Usamos fetch para llamar a nuestra API en lugar de Supabase.
+//         const response = await fetch('/api/profesores');
+//         if (!response.ok) {
+//             const errorData = await response.json();
+//             throw new Error(errorData.error || 'Error al cargar profesores desde la API');
+//         }
         
-        const data = await response.json();
+//         const data = await response.json();
 
-        console.log(`Profesores cargados: ${data?.length || 0}`);
-        setProfesores(data || []);
-        setProfesoresLoaded(true);
-    } catch (error) {
-        console.error("Error en loadAllProfesores:", error);
-        setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)));
-    } finally {
-        setLoading(false);
-    }
-};
+//         console.log(`Profesores cargados: ${data?.length || 0}`);
+//         setProfesores(data || []);
+//         setProfesoresLoaded(true);
+//     } catch (error) {
+//         console.error("Error en loadAllProfesores:", error);
+//         setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)));
+//     } finally {
+//         setLoading(false);
+//     }
+// };
 
   // Función para cargar profesores independientemente de las materias
-  const fetchProfesores = useCallback(async () => {
-    // Si no tenemos la información necesaria, no hacemos nada.
-    if (!currentUserId || !userRole) return;
+//   const fetchProfesores = useCallback(async () => {
+//     // Si no tenemos la información necesaria, no hacemos nada.
+//     if (!currentUserId) return;
 
-    setLoading(true);
-    console.log(`Cargando profesores desde la API con rol: ${userRole}`);
+//     setLoading(true);
+//     console.log(`Cargando profesores desde la API con rol: ${userRole}`);
 
-    try {
-        // Hacemos una única llamada a nuestra API inteligente, pasándole el rol y el ID del usuario.
-        const response = await fetch(`/api/profesores?userId=${currentUserId}&userRole=${userRole}`);
+//     try {
+//         // Hacemos una única llamada a nuestra API inteligente, pasándole el rol y el ID del usuario.
+//         const response = await fetch(`/api/profesores?userId=${currentUserId}&userRole=${userRole}`);
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'No se pudieron cargar los profesores desde la API.');
-        }
+//         if (!response.ok) {
+//             const errorData = await response.json();
+//             throw new Error(errorData.error || 'No se pudieron cargar los profesores desde la API.');
+//         }
 
-        const data = await response.json();
+//         const data = await response.json();
         
-        setProfesores(data || []);
-        setProfesoresLoaded(true);
-    } catch (error) {
-        console.error("Error fetching profesores:", error);
-        setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)));
-    } finally {
-        setLoading(false);
-    }
-}, [currentUserId, userRole]); // Las dependencias ahora son más limpias.
+//         setProfesores(data || []);
+//         setProfesoresLoaded(true);
+//     } catch (error) {
+//         console.error("Error fetching profesores:", error);
+//         setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)));
+//     } finally {
+//         setLoading(false);
+//     }
+// }, [currentUserId, userRole]); // Las dependencias ahora son más limpias.
 
   // Modify the fetchData function to properly filter materials based on user role
   const fetchData = useCallback(async () => {
-    // 1. Usamos las variables del hook 'useAuth' que ya contienen la info del usuario.
-    // Si no hay un usuario logueado o un período seleccionado, no hacemos nada.
-    if (!selectedPeriod || !user?.id || !userRole) {
-        setLoading(false);
-        return;
+    // Si no hay usuario o período, no hacemos nada.
+    if (!user || !selectedPeriod) {
+      setLoading(false);
+      return;
     }
 
     setLoading(true);
     setError(null);
+    console.log("Iniciando carga de datos para Materias, Grupos y Profesores...");
 
     try {
-        // 2. Verificamos el feature flag para decidir la fuente de los datos.
-        if (useMySqlApi) {
-            console.log("Usando API de MySQL para Materias y Grupos");
-            
-            // 3. Hacemos una única llamada a nuestra API.
-            // Le pasamos los datos del usuario directamente desde el hook 'useAuth'.
-            const response = await fetch(`/api/materias-grupos?periodoId=${selectedPeriod}&userId=${user.id}&userRole=${userRole}`);
-            
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Error al cargar datos desde la API');
-            }
-            
-            const data = await response.json();
+      if (useMySqlApi) {
+        // Hacemos las llamadas a nuestra API de forma concurrente para mayor eficiencia.
+        const [materiasGruposRes, profesoresRes] = await Promise.all([
+          fetch(`/api/materias-grupos?periodoId=${selectedPeriod}`),
+          fetch('/api/profesores')
+        ]);
 
-            // 4. Actualizamos el estado con los datos recibidos de nuestra API.
-            setMaterias(data.materias || []);
-            const parsedGrupos = (data.grupos || []).map((grupo: any) => ({
-                ...grupo,
-                horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
-            }));
-            setGrupos(parsedGrupos);
-
-        } else {
-            // La lógica de fallback para Supabase se mantendría aquí si la necesitaras.
-            console.log("Usando Supabase (modo fallback)");
-            // ... tu código original para obtener datos de Supabase iría aquí ...
+        if (!materiasGruposRes.ok) {
+          const errorData = await materiasGruposRes.json();
+          throw new Error(errorData.error || 'Error al cargar materias y grupos.');
         }
+
+        if (!profesoresRes.ok) {
+          const errorData = await profesoresRes.json();
+          throw new Error(errorData.error || 'Error al cargar profesores.');
+        }
+
+        const materiasGruposData = await materiasGruposRes.json();
+        const profesoresData = await profesoresRes.json();
+        
+        // Actualizamos el estado con los datos recibidos.
+        setMaterias(materiasGruposData.materias || []);
+        const parsedGrupos = (materiasGruposData.grupos || []).map((grupo: any) => ({
+            ...grupo,
+            horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
+        }));
+        setGrupos(parsedGrupos);
+        setProfesores(profesoresData || []);
+        console.log(`Carga exitosa: ${profesoresData.length} profesores, ${materiasGruposData.materias.length} materias.`);
+
+      } else {
+        // Lógica de fallback para Supabase (si aún la necesitas).
+        console.warn("Usando modo fallback de Supabase.");
+      }
     } catch (err: any) {
-        setError(err.message);
-        toast({ title: "Error de Carga", description: err.message, variant: "destructive" });
+      setError(err.message);
+      toast({ title: "Error de Carga", description: err.message, variant: "destructive" });
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-// 5. Las dependencias del useCallback ahora son las correctas y más limpias.
-}, [selectedPeriod, user, userRole, useMySqlApi, toast]);
+  }, [selectedPeriod, user, useMySqlApi, toast]); // Dependemos del usuario y el período.
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // Función para verificar si el usuario es administrador directamente desde la API
-  const checkAdminStatus = async (userId: string) => {
-    try {
-      const response = await fetch(`/api/check-admin?userId=${userId}`)
-      const data = await response.json()
-      console.log("Respuesta de check-admin API:", data)
-      return data.isAdmin === true
-    } catch (error) {
-      console.error("Error verificando estado de admin:", error)
-      return false
-    }
-  }
+  // const checkAdminStatus = async (userId: string) => {
+  //   try {
+  //     const response = await fetch(`/api/check-admin?userId=${userId}`)
+  //     const data = await response.json()
+  //     console.log("Respuesta de check-admin API:", data)
+  //     return data.isAdmin === true
+  //   } catch (error) {
+  //     console.error("Error verificando estado de admin:", error)
+  //     return false
+  //   }
+  // }
 
   useEffect(() => {
     async function fetchUserData() {
@@ -395,16 +405,16 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   }, [])
 
   // Cargar profesores inmediatamente después de obtener el rol del usuario
-  useEffect(() => {
-    if (currentUserId !== null && userRole !== null && !profesoresLoaded) {
-      console.log("Cargando profesores después de obtener el rol del usuario")
-      if (userRole === "admin" || isUserAdmin) {
-        loadAllProfesores()
-      } else {
-        fetchProfesores()
-      }
-    }
-  }, [currentUserId, userRole, profesoresLoaded, fetchProfesores, isUserAdmin])
+  // useEffect(() => {
+  //   if (currentUserId !== null && userRole !== null && !profesoresLoaded) {
+  //     console.log("Cargando profesores después de obtener el rol del usuario")
+  //     if (userRole === "admin" || isUserAdmin) {
+  //       loadAllProfesores()
+  //     } else {
+  //       fetchProfesores()
+  //     }
+  //   }
+  // }, [currentUserId, userRole, profesoresLoaded, fetchProfesores, isUserAdmin])
 
   useEffect(() => {
     if (selectedPeriod && currentUserId !== null) {
@@ -416,29 +426,41 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
     if (!nombreMateria.trim() || !profesorId) {
         toast({ title: "Error", description: "Todos los campos son requeridos.", variant: "destructive" });
         return;
-    }
 
+    }
+    if (!user || !user.carrera_id) {
+      toast({
+          title: "Error de Sesión",
+          description: "No se pudo identificar al usuario o su carrera. Por favor, recarga la página o vuelve a iniciar sesión.",
+          variant: "destructive"
+      });
+      return;
+  }
     setLoading(true);
-    const materiaData = {
+     const materiaData = {
         nombre: nombreMateria,
         profesor_id: profesorId === "pendiente" ? null : parseInt(profesorId),
-        carrera_id: userCarreraId,
-        usuario_id: currentUserId
+        carrera_id: user.carrera_id, // Usamos la carrera del usuario del hook.
+        usuario_id: user.id          // Usamos el ID del usuario del hook.
     };
-    
+    setLoading(true);
     try {
         // HE AQUÍ LA CORRECCIÓN: Se añade el if/else para usar la API o Supabase.
         if (useMySqlApi) {
-            const response = await fetch('/api/materias-grupos', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'materia', payload: materiaData, periodoId: selectedPeriod }),
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Error al crear materia vía API');
-            }
-        } else {
+          const response = await fetch('/api/materias-grupos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'materia', payload: materiaData, periodoId: selectedPeriod }),
+          });
+
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Error al crear la materia vía API');
+          }
+      }
+        
+        
+        else {
             const tables = getTableNamesByPeriod(selectedPeriod);
             const { error } = await supabase.from(tables.materias).insert([materiaData]);
             if (error) throw error;

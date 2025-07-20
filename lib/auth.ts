@@ -1,48 +1,45 @@
-// RUTA: lib/auth.ts
 "use client"
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 
-// 1. Definimos los tipos de datos que manejará nuestro contexto.
+// 1. Asegúrate de que el tipo User incluya todos los campos necesarios.
 type User = {
   id: string;
   email: string;
   rol: string;
   nombre?: string;
+  carrera_id?: number; // <-- ¡MUY IMPORTANTE!
 };
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
-  userRole: string | null;
   login: (credentials: { email: string; password: string }) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 };
 
-// 2. Creamos el contexto de React con valores por defecto seguros.
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   isAdmin: false,
-  userRole: null,
   login: async () => ({ ok: false, error: "Provider not ready" }),
   logout: async () => {},
 });
 
-// 3. Creamos el componente "Proveedor" que gestionará el estado de la autenticación.
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
     const checkSession = useCallback(async () => {
         try {
+            // 2. Tu API de sesión debe devolver el objeto de usuario completo.
             const response = await fetch('/api/auth/session');
             
-            // HE AQUÍ LA CORRECCIÓN: Primero verificamos si la respuesta es exitosa.
             if (response.ok) {
                 const data = await response.json();
-                setUser(data.user);
+                // 3. Se guarda el usuario completo (incluyendo carrera_id) en el estado.
+                setUser(data.user); 
             } else {
                 setUser(null);
             }
@@ -58,55 +55,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkSession();
     }, [checkSession]);
 
+    // ... (El resto de las funciones login y logout se mantienen igual) ...
+
     const login = async (credentials: { email: string; password: string }) => {
-        setLoading(true);
-        try {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(credentials),
-            });
+      setLoading(true);
+      try {
+          const response = await fetch('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(credentials),
+          });
 
-            // HE AQUÍ LA CORRECCIÓN: Verificamos la respuesta ANTES de intentar leer el JSON.
-            if (!response.ok) {
-                // Intentamos leer el error como JSON, si falla, mostramos un error genérico.
-                try {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `Error del servidor: ${response.statusText}`);
-                } catch (e) {
-                    throw new Error(`Error del servidor: ${response.status} ${response.statusText}`);
-                }
-            }
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || `Error del servidor`);
+          }
 
-            const data = await response.json();
-            setUser(data.user);
-            return { ok: true };
+          const data = await response.json();
+          setUser(data.user); // El login también debe devolver el usuario completo.
+          return { ok: true };
 
-        } catch (error: any) {
-            console.error("Error en la función de login:", error);
-            // Devolvemos el error para que el componente Auth.tsx lo pueda mostrar.
-            return { ok: false, error: error.message };
-        } finally {
-            setLoading(false);
-        }
+      } catch (error: any) {
+          return { ok: false, error: error.message };
+      } finally {
+          setLoading(false);
+      }
     };
 
     const logout = async () => {
-        try {
-            await fetch('/api/auth/logout', { method: 'POST' });
-        } catch (error) {
-            console.error("Error al cerrar sesión en el servidor:", error);
-        } finally {
-            setUser(null);
-            window.location.href = '/';
-        }
+        await fetch('/api/auth/logout', { method: 'POST' });
+        setUser(null);
+        window.location.href = '/';
     };
     
+    // El cálculo de isAdmin se basa en el 'rol' del objeto user.
     const isAdmin = user?.rol?.toLowerCase() === 'admin' || user?.rol?.toLowerCase() === 'administrador';
     
-    const value = { user, loading, isAdmin, userRole: user?.rol || null, login, logout };
+    // El valor del contexto ahora solo expone lo necesario.
+    const value = { user, loading, isAdmin, login, logout };
 
     return React.createElement(AuthContext.Provider, { value }, children);
 }
 
+// Hook para consumir el contexto.
 export const useAuth = () => useContext(AuthContext);

@@ -1,13 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Users, BookOpen, School, Calendar, TrendingUp, BarChart3, PieChart, Activity, User } from "lucide-react"
 import { MigrationStatus } from './MigrationStatus';
-import { useAuth } from "@/lib/auth"; // Se usa el hook para la info del usuario
+import { useAuth } from "@/lib/auth";// Se usa el hook para la info del usuario
 
 interface DashboardProps {
   selectedPeriod: string
@@ -49,139 +48,33 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
   const { user, isAdmin } = useAuth(); // Se usa el hook para la info del usuario
 
   const fetchStats = useCallback(async () => {
-    setLoading(true)
+    if (!selectedPeriod || !user?.id) return;
+    setLoading(true);
 
     try {
-      if (!selectedPeriod) {
-        throw new Error("No se ha seleccionado un periodo académico")
+      const response = await fetch(`/api/dashboard?periodoId=${selectedPeriod}&userId=${user.id}`);
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar las estadísticas.');
       }
+      const data = await response.json();
 
-      const tables = getTableNamesByPeriod(selectedPeriod)
+      setStats(data.stats);
+      setPeriodoNombre(data.periodoNombre);
+      setUserName(data.userName);
+      setDistribucionTurnos(data.distribucionTurnos);
+      setDistribucionDias(data.distribucionDias);
+      setRecentActivity(data.recentActivity || []);
 
-      // Fetch user data first
-      const { data: userData, error: userError } = await supabase.from("usuarios").select("*").eq("id", currentUserId)
-
-      // Manejar el caso de múltiples registros o ninguno
-      if (userError) {
-        console.error("Error fetching user data:", userError)
-      } else if (userData && userData.length > 0) {
-        // Tomar el primer registro si hay múltiples
-        setUserName(userData[0].nombre)
-        console.log("Usuario encontrado:", userData[0])
-      } else {
-        console.log("No se encontró información de usuario para ID:", currentUserId)
-      }
-
-      // Fetch counts based on user role
-      if (isUserAdmin) {
-        // Admin can see everything - global stats
-        const [profesoresCount, materiasCount, gruposCount, aulasCount, asignacionesCount] = await Promise.all([
-          supabase.from("profesores").select("id", { count: "exact", head: true }),
-          supabase.from(tables.materias).select("id", { count: "exact", head: true }),
-          supabase.from(tables.grupos).select("id", { count: "exact", head: true }),
-          supabase.from("aulas").select("id", { count: "exact", head: true }),
-          supabase.from(tables.asignaciones).select("id", { count: "exact", head: true }),
-        ])
-
-        // Calcular porcentaje de asignación
-        const gruposTotal = gruposCount.count || 0
-        const asignacionesTotal = asignacionesCount.count || 0
-        // Limitar el porcentaje a un máximo de 100%
-        const porcentajeAsignado =
-          gruposTotal > 0 ? Math.min(100, Math.round((asignacionesTotal / gruposTotal) * 100)) : 0
-
-        setStats({
-          profesores: profesoresCount.count || 0,
-          materias: materiasCount.count || 0,
-          grupos: gruposCount.count || 0,
-          aulas: aulasCount.count || 0,
-          asignaciones: asignacionesTotal,
-          porcentajeAsignado,
-        })
-
-        // Fetch global distribution data
-        await fetchDistribucionTurnos()
-        await fetchDistribucionDias()
-      } else {
-        // Director or regular user - personalized stats
-        // Regular users or coordinators can only see their own data
-        let materiasQuery = supabase.from(tables.materias).select("id", { count: "exact", head: true })
-
-        // Filter by user_id for directors and regular users
-        if (currentUserId) {
-          materiasQuery = materiasQuery.eq("usuario_id", currentUserId)
-        }
-
-        const { count: materiasCount } = await materiasQuery
-
-        // Store user's personal materia count
-        setUserMateriaCount(materiasCount || 0)
-
-        // Get the user's materias
-        const { data: materiasData } = await supabase.from(tables.materias).select("id").eq("usuario_id", currentUserId)
-
-        // Get grupos for the user's materias
-        const materiaIds = materiasData?.map((m) => m.id) || []
-
-        let gruposCount = 0
-        if (materiaIds.length > 0) {
-          const { count: gruposTotal } = await supabase
-            .from(tables.grupos)
-            .select("id", { count: "exact", head: true })
-            .in("materia_id", materiaIds)
-
-          gruposCount = gruposTotal || 0
-        }
-
-        // Store user's personal grupo count
-        setUserGrupoCount(gruposCount)
-
-        // Get asignaciones for the user's materias
-        let asignacionesCount = 0
-        if (materiaIds.length > 0) {
-          const { count: asignacionesTotal } = await supabase
-            .from(tables.asignaciones)
-            .select("id", { count: "exact", head: true })
-            .in("materia_id", materiaIds)
-
-          asignacionesCount = asignacionesTotal || 0
-        }
-
-        // Store user's personal asignacion count
-        setUserAsignacionCount(asignacionesCount)
-
-        // Calculate personal assignment percentage
-        const porcentajeAsignado =
-          gruposCount > 0 ? Math.min(100, Math.round((asignacionesCount / gruposCount) * 100)) : 0
-
-        // Get total counts for comparison
-        const [profesoresCount, aulasCount] = await Promise.all([
-          supabase.from("profesores").select("id", { count: "exact", head: true }),
-          supabase.from("aulas").select("id", { count: "exact", head: true }),
-        ])
-
-        setStats({
-          profesores: profesoresCount.count || 0,
-          materias: materiasCount || 0,
-          grupos: gruposCount,
-          aulas: aulasCount.count || 0,
-          asignaciones: asignacionesCount,
-          porcentajeAsignado,
-        })
-
-        // Fetch personal distribution data
-        await fetchPersonalDistribucionTurnos(materiaIds)
-        await fetchPersonalDistribucionDias(materiaIds)
-
-        // Fetch recent activity for this user
-        await fetchRecentActivity(currentUserId)
-      }
     } catch (error) {
-      console.error("Error fetching stats:", error)
+      console.error("Error fetching stats:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [selectedPeriod, userRole, userCarreraId, isUserAdmin, currentUserId])
+  }, [selectedPeriod, user]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const fetchRecentActivity = async (userId: string | null) => {
     if (!userId || !selectedPeriod) return
@@ -222,31 +115,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
     }
   }
 
-  useEffect(() => {
-    async function fetchUserData() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (user) {
-        setCurrentUserId(user.id)
 
-        // Get user role from database
-        const { data, error } = await supabase.from("usuarios").select("rol, carrera_id").eq("id", user.id)
-
-        if (!error && data && data.length > 0) {
-          // Tomar el primer registro si hay múltiples
-          setUserRole(data[0].rol)
-          setUserCarreraId(data[0].carrera_id)
-          setIsUserAdmin(data[0].rol === "admin")
-          console.log("Rol de usuario cargado:", data[0].rol)
-        } else {
-          console.log("No se encontró rol de usuario o hubo un error:", error)
-        }
-      }
-    }
-
-    fetchUserData()
-  }, [])
 
   useEffect(() => {
     // Asegurar que se carguen los datos incluso si selectedPeriod ya está establecido
