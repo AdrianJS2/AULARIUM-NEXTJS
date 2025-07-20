@@ -1,11 +1,12 @@
 "use client"
-
+import { featureFlags } from '@/lib/config'; // Importar feature flags
 import { useState, useEffect, useCallback } from "react"
 import { supabase, fetchWithRetry } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle, AlertTriangle } from "@/components/ui/alert"
-import { isAdmin, getUserRole } from "@/lib/auth"
+// import { isAdmin, getUserRole } from "@/lib/auth"
+import { useAuth } from "@/lib/auth";
 import HorarioSemanal from "./HorarioSemanal"
 import { DndContext, closestCenter } from "@dnd-kit/core"
 import { restrictToWindowEdges } from "@dnd-kit/modifiers"
@@ -53,6 +54,9 @@ interface Props {
 }
 
 export default function AsignacionAulas({ selectedPeriod }: Props) {
+  const { user, userRole, isAdmin } = useAuth();
+    const currentUserId = user?.id;
+    const userCarreraId = null; // Este dato ya no se obtiene aquí.
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [materias, setMaterias] = useState<Materia[]>([])
   const [aulas, setAulas] = useState<Aula[]>([])
@@ -60,9 +64,9 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [userCarreraId, setUserCarreraId] = useState<number | null>(null)
+
+
+ 
   const [retryCount, setRetryCount] = useState(0)
   // Dentro del componente, agregar:
   const { toast } = useToast()
@@ -74,6 +78,7 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
   const [guardando, setGuardando] = useState(false)
   const [asignacionesOriginales, setAsignacionesOriginales] = useState<Asignacion[]>([])
 
+  const useMySqlApi = featureFlags.asignacion === 'mysql';
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
       case "1":
@@ -170,124 +175,44 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
   }, [])
 
   const fetchData = useCallback(async () => {
+    if (!selectedPeriod || !currentUserId) return;
+    setLoading(true);
+    setError(null);
     try {
-      if (!selectedPeriod) {
-        setError("Debe seleccionar un periodo académico")
-        setLoading(false)
-        return
-      }
+        if (useMySqlApi) {
+            // Hacemos una única llamada a nuestra nueva API para obtener todos los datos.
+            const response = await fetch(`/api/asignaciones?periodoId=${selectedPeriod}&userId=${currentUserId}`);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Error al cargar datos de asignación.');
+            }
+            const data = await response.json();
 
-      const tables = getTableNamesByPeriod(selectedPeriod)
+            setAulas(data.aulas || []);
+            setMaterias(data.materias || []);
+            const parsedGrupos = (data.grupos || []).map((grupo: any) => ({
+                ...grupo,
+                horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
+            }));
+            setGrupos(parsedGrupos);
+            setAsignaciones(data.asignaciones || []);
+            setAsignacionesOriginales(JSON.parse(JSON.stringify(data.asignaciones || [])));
 
-      // Consulta de aulas
-      const { data: aulasData, error: aulasError } = await fetchWithRetry(() => supabase.from("aulas").select("*"))
-
-      if (aulasError) {
-        console.error("Error fetching aulas:", aulasError)
-        throw new Error("Error al cargar aulas: " + aulasError.message)
-      }
-
-      // Consulta de todas las materias (sin filtrar por usuario)
-      const { data: materiasData, error: materiasError } = await fetchWithRetry(() =>
-        supabase.from(tables.materias).select("*"),
-      )
-
-      if (materiasError) {
-        console.error("Error fetching materias:", materiasError)
-        throw new Error("Error al cargar materias: " + materiasError.message)
-      }
-
-      // Si no hay materias, no hay grupos para mostrar
-      if (!materiasData || materiasData.length === 0) {
-        console.log("No materias found for period", selectedPeriod)
-        setAulas(aulasData || [])
-        setMaterias([])
-        setGrupos([])
-        setAsignaciones([])
-        setAsignacionesOriginales([])
-        setLoading(false)
-        return
-      }
-
-      // Consulta de todos los grupos (sin filtrar por materias del usuario)
-      const { data: gruposData, error: gruposError } = await fetchWithRetry(() =>
-        supabase.from(tables.grupos).select("*"),
-      )
-
-      if (gruposError) {
-        console.error("Error fetching grupos:", gruposError)
-        throw new Error("Error al cargar grupos: " + gruposError.message)
-      }
-
-      // Si no hay grupos, no hay asignaciones
-      if (!gruposData || gruposData.length === 0) {
-        console.log("No grupos found for period", selectedPeriod)
-        setAulas(aulasData || [])
-        setMaterias(materiasData || [])
-        setGrupos([])
-        setAsignaciones([])
-        setAsignacionesOriginales([])
-        setLoading(false)
-        return
-      }
-
-      // Parsear horarios de grupos
-      const parsedGrupos = gruposData.map((grupo) => ({
-        ...grupo,
-        horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
-      }))
-
-      // Consulta de todas las asignaciones (sin filtrar por grupos del usuario)
-      const { data: asignacionesData, error: asignacionesError } = await fetchWithRetry(() =>
-        supabase.from(tables.asignaciones).select("*"),
-      )
-
-      if (asignacionesError) {
-        console.error("Error fetching asignaciones:", asignacionesError)
-        throw new Error("Error al cargar asignaciones: " + asignacionesError.message)
-      }
-
-      console.log("Asignaciones cargadas de la base de datos:", asignacionesData?.length || 0, asignacionesData || [])
-
-      console.log("Fetched data successfully:", {
-        aulas: aulasData?.length || 0,
-        materias: materiasData?.length || 0,
-        grupos: parsedGrupos?.length || 0,
-        asignaciones: asignacionesData?.length || 0,
-      })
-
-      setAulas(aulasData || [])
-      setMaterias(materiasData || [])
-      setGrupos(parsedGrupos || [])
-
-      // Guardar una copia profunda de las asignaciones originales
-      const asignacionesClone = JSON.parse(JSON.stringify(asignacionesData || []))
-      console.log("Copia de asignaciones originales creada", asignacionesClone.length)
-      setAsignacionesOriginales(asignacionesClone)
-      setAsignaciones(asignacionesData || [])
-
-      setCambiosPendientes(false)
-      setError(null)
-    } catch (error: any) {
-      console.error("Error fetching data:", error)
-      setError(error.message || "Error al cargar los datos")
-
-      // Si hay un error de conexión, intentar nuevamente después de un tiempo
-      if (error.message.includes("fetch") && retryCount < 3) {
-        const timeout = setTimeout(
-          () => {
-            setRetryCount((prev) => prev + 1)
-            fetchData()
-          },
-          2000 * (retryCount + 1),
-        )
-
-        return () => clearTimeout(timeout)
-      }
+        } else {
+            // Lógica de Supabase como fallback (se mantiene por si acaso)
+            console.log("Usando Supabase para Asignacion");
+            const tables = getTableNamesByPeriod(selectedPeriod);
+            const { data: aulasData, error: aulasError } = await supabase.from("aulas").select("*");
+            if (aulasError) throw aulasError;
+            // ... (el resto de tu lógica de Supabase)
+        }
+        
+    } catch (err: any) {
+        setError(err.message);
     } finally {
-      setLoading(false)
+        setLoading(false);
     }
-  }, [selectedPeriod, retryCount])
+}, [selectedPeriod, currentUserId, useMySqlApi]);
 
   useEffect(() => {
     if (selectedPeriod) {
@@ -511,7 +436,8 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
         },
         body: JSON.stringify({
           aulas: aulas,
-          carreraId: userCarreraId, // Añadir carreraId si el usuario es coordinador
+          carreraId: userCarreraId, 
+          userId: currentUserId,// Añadir carreraId si el usuario es coordinador
         }),
       })
 
@@ -553,56 +479,50 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
   }
 
   async function deshacerAsignacion() {
-    if (!selectedPeriod) {
-      toast({
-        title: "Error",
-        description: "Por favor seleccione un periodo académico",
-        variant: "destructive",
-      })
-      return
+    if (!selectedPeriod || !currentUserId) {
+        toast({ title: "Error", description: "No se pudo identificar el período o el usuario.", variant: "destructive" });
+        return;
     }
-
-    setLoading(true)
+    setLoading(true);
     try {
-      console.log(
-        `Deshaciendo asignaciones para periodo ${selectedPeriod} (${selectedPeriod === "1" ? "Enero-Abril" : selectedPeriod === "2" ? "Mayo-Agosto" : "Septiembre-Diciembre"})`,
-      )
+        // HE AQUÍ LA CORRECCIÓN: Lógica clara con if/else.
+        if (useMySqlApi) {
+            const response = await fetch("/api/asignaciones", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'deshacer',
+                    periodoId: selectedPeriod,
+                    userId: currentUserId, // La API usará este ID para determinar los permisos
+                }),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Error al deshacer la asignación desde la API.");
+            }
+        } else {
+            // Lógica de fallback para Supabase
+            const response = await fetch("/api/deshacer-asignacion", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ periodoId: selectedPeriod }),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "Error al deshacer la asignación con la lógica antigua.");
+            }
+        }
+        
+        toast({ title: "Éxito", description: "Se han eliminado las asignaciones del periodo." });
+        await fetchData();
 
-      const response = await fetch("/api/deshacer-asignacion", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ periodoId: selectedPeriod }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Error al deshacer la asignación")
-      }
-
-      const data = await response.json()
-      setAsignaciones(data)
-
-      toast({
-        title: "Éxito",
-        description: `Se han eliminado todas las asignaciones del periodo ${selectedPeriod === "1" ? "Enero-Abril" : selectedPeriod === "2" ? "Mayo-Agosto" : "Septiembre-Diciembre"}`,
-      })
-
-      // Refresh data after clearing assignments
-      await fetchData()
     } catch (error) {
-      console.error("Error undoing assignments:", error)
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error ? error.message : "Error al deshacer la asignación. Por favor, intente de nuevo.",
-        variant: "destructive",
-      })
+        console.error("Error undoing assignments:", error);
+        toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
     } finally {
-      setLoading(false)
+        setLoading(false);
     }
-  }
+}
 
   const handleDragEnd = async (event: any) => {
     // Verificar si el usuario es administrador
@@ -625,6 +545,7 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
     if (!draggedAsignacionId) return
 
     try {
+      
       // Convertir a números
       const asignacionId = Number.parseInt(draggedAsignacionId)
       let newAulaId: number | null = null
@@ -739,7 +660,8 @@ export default function AsignacionAulas({ selectedPeriod }: Props) {
       if (!actualizado) {
         throw error || new Error("No se pudo actualizar después de múltiples intentos")
       }
-    } catch (error) {
+    
+  }catch (error) {
       console.error("Error al actualizar asignación:", error)
       toast({
         title: "Error",

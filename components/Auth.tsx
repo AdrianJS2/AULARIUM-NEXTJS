@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { supabase, fetchWithRetry } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth"; 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -96,12 +97,13 @@ export default function Auth() {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [isLogin, setIsLogin] = useState(true)
+
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
   const [message, setMessage] = useState<string | null>(null)
-
+  const { login } = useAuth(); 
+  const [isLogin, setIsLogin] = useState(true)
   const validateForm = () => {
     if (!email.trim()) {
       setError("Por favor, ingresa tu correo electrónico")
@@ -132,81 +134,81 @@ export default function Auth() {
 
   // Actualizar la función handleLogin para manejar mejor los errores
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setLoading(true);
+    setError(null);
 
     try {
-      const { data, error } = await fetchWithRetry(async () => {
-        return await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
-      })
+        // Llamamos a la función 'login' de nuestro hook, que a su vez llama a nuestra API.
+        const result = await login({ email, password });
 
-      if (error) throw error
+        if (!result.ok) {
+            // Si la API devuelve un error, lo mostramos.
+            throw new Error(result.error || "Credenciales inválidas o error del servidor.");
+        }
+        
+        toast({
+            title: "Inicio de sesión exitoso",
+            description: "Bienvenido de nuevo.",
+        });
+        // No necesitamos redirigir, el AuthProvider detectará el cambio de sesión
+        // y el componente Home se renderizará automáticamente.
 
-      toast({
-        title: "Inicio de sesión exitoso",
-        description: "Has iniciado sesión correctamente.",
-      })
-    } catch (error: any) {
-      console.error("Error during login:", error)
-      if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-        setError("Error de conexión. Verifica tu conexión a internet e intenta nuevamente.")
-      } else {
-        setError(error.error_description || error.message || "Error al iniciar sesión")
-      }
+    } catch (err: any) {
+        console.error("Error during login:", err);
+        setError(err.message);
     } finally {
-      setLoading(false)
+        setLoading(false);
     }
-  }
+};
 
   // Actualizar la función handleSignUp para manejar mejor los errores
-  const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
+  // const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
+  //   e.preventDefault()
+  //   setLoading(true)
+  //   setError(null)
 
-    try {
-      const { data, error } = await fetchWithRetry(async () => {
-        return await supabase.auth.signUp({
-          email,
-          password,
-        })
-      })
+  //   try {
+  //     const { data, error } = await fetchWithRetry(async () => {
+  //       return await supabase.auth.signUp({
+  //         email,
+  //         password,
+  //       })
+  //     })
 
-      if (error) throw error
+  //     if (error) throw error
 
-      toast({
-        title: "Registro exitoso",
-        description: "Por favor, verifica tu email para completar el registro.",
-      })
+  //     toast({
+  //       title: "Registro exitoso",
+  //       description: "Por favor, verifica tu email para completar el registro.",
+  //     })
 
-      setMessage("Revisa tu correo electrónico para confirmar tu cuenta")
-    } catch (error: any) {
-      console.error("Error during signup:", error)
-      if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-        setError("Error de conexión. Verifica tu conexión a internet e intenta nuevamente.")
-      } else {
-        setError(error.error_description || error.message || "Error al registrarse")
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
+  //     setMessage("Revisa tu correo electrónico para confirmar tu cuenta")
+  //   } catch (error: any) {
+  //     console.error("Error during signup:", error)
+  //     if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+  //       setError("Error de conexión. Verifica tu conexión a internet e intenta nuevamente.")
+  //     } else {
+  //       setError(error.error_description || error.message || "Error al registrarse")
+  //     }
+  //   } finally {
+  //     setLoading(false)
+  //   }
+  // }
 
-  const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  // const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
+  //   e.preventDefault()
 
-    if (!validateForm()) return
+  //   if (!validateForm()) return
 
-    if (isLogin) {
-      await handleLogin(e)
-    } else {
-      await handleSignUp(e)
-    }
-  }
+  //   if (isLogin) {
+  //     await handleLogin(e)
+  //   } else {
+  //     await handleSignUp(e)
+  //   }
+  // }
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword)
@@ -234,6 +236,8 @@ export default function Auth() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+   
+
 
             {message && (
               <Alert className="mb-4">
@@ -241,7 +245,7 @@ export default function Auth() {
               </Alert>
             )}
 
-            <form onSubmit={handleAuth} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Correo electrónico</Label>
                 <div className="relative">
@@ -296,8 +300,9 @@ export default function Auth() {
                 ) : isLogin ? (
                   "Iniciar Sesión"
                 ) : (
-                  "Registrarse"
-                )}
+                  "Regi"
+                )
+                }
               </Button>
             </form>
           </CardContent>

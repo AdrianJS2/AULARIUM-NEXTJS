@@ -4,7 +4,7 @@ export const featureFlags = {
     aulas: 'mysql',
     profesores: 'mysql',
     materiasGrupos: 'mysql',
-    asignacion: 'supabase',
-    horarios: 'supabase',
-    autenticacion: 'supabase',
+    asignacion: 'mysql',
+    horarios: 'mysql',
+    autenticacion: 'mysql',
   };

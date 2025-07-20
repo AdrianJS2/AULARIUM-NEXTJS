@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Users, BookOpen, School, Calendar, TrendingUp, BarChart3, PieChart, Activity, User } from "lucide-react"
 import { MigrationStatus } from './MigrationStatus';
+import { useAuth } from "@/lib/auth"; // Se usa el hook para la info del usuario
 
 interface DashboardProps {
   selectedPeriod: string
@@ -45,6 +46,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
   const [userGrupoCount, setUserGrupoCount] = useState(0)
   const [userAsignacionCount, setUserAsignacionCount] = useState(0)
   const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const { user, isAdmin } = useAuth(); // Se usa el hook para la info del usuario
 
   const fetchStats = useCallback(async () => {
     setLoading(true)

@@ -32,6 +32,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth"
 import { ConfigDialog } from "./ConfigDialog"
 
+
 // Add global styles for compact mode
 if (typeof document !== "undefined") {
   const style = document.createElement("style")
@@ -189,9 +190,10 @@ export function Sidebar({
   const [userCarrera, setUserCarrera] = useState<string | null>(null)
   const router = useRouter()
   const [userRoleState, setUserRoleState] = useState<string | null>(null)
-  const { isAdmin, userRole, refreshUserRole: refreshAuthUserRole } = useAuth()
-  const [isSigningOut, setIsSigningOut] = useState(false)
 
+
+  const { isAdmin, userRole, logout } = useAuth();
+  const [isSigningOut, setIsSigningOut] = useState(false);
   // Add this effect to check user role on component mount
   useEffect(() => {
     async function checkUserRole() {
@@ -280,67 +282,27 @@ export function Sidebar({
 
   // Render the admin button directly in the sidebar
   const renderAdminButton = () => {
-    // Check if user has admin role - using case-insensitive comparison with ADMIN_ROLES array
-    const storedRole = typeof window !== "undefined" ? window.localStorage.getItem("userRoleState") : null
-
-    const hasAdminRole =
-      isAdmin ||
-      isAdminProp ||
-      (userRole && ADMIN_ROLES.includes(userRole.toLowerCase())) ||
-      (userRoleState && ADMIN_ROLES.includes(userRoleState.toLowerCase())) ||
-      (storedRole && ADMIN_ROLES.includes(storedRole.toLowerCase()))
-
-    console.log("Rendering admin button. Has admin role:", hasAdminRole, {
-      isAdmin,
-      userRole,
-      userRoleState,
-      storedRole,
-      isAdminProp,
-    })
-
-    if (!hasAdminRole) {
-      console.log("User does not have admin role, not rendering admin button")
-      return null
+    // La lógica ahora es mucho más simple porque `isAdmin` viene directamente del hook.
+    if (!isAdmin) {
+      return null;
     }
-
-    console.log("User has admin role, rendering admin button")
+    
     return (
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant={currentSection === "admin" ? "default" : "ghost"}
-            className={cn(
-              "w-full justify-start gap-2 transition-all duration-200",
-              currentSection === "admin"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground active:bg-accent/90",
-              isCollapsed && "justify-center p-2",
-            )}
-            onClick={() => {
-              console.log("Admin button clicked, navigating to admin section")
-              // Force admin check before navigation
-              if (typeof window !== "undefined") {
-                // Set a temporary flag to indicate admin status
-                window.localStorage.setItem("force_admin_access", "true")
-                console.log("Setting force_admin_access flag for admin navigation")
-              }
-              onNavigate("admin")
-              setIsMobileOpenState(false)
-            }}
+            className={cn("w-full justify-start gap-2", isCollapsed && "justify-center p-2")}
+            onClick={() => onNavigate("admin")}
           >
             <ClipboardList className={cn("h-5 w-5", isCollapsed ? "mx-auto" : "")} />
             {!isCollapsed && <span>Administración</span>}
           </Button>
         </TooltipTrigger>
-        {isCollapsed && (
-          <TooltipContent side="right">
-            <p>Administración</p>
-            <p className="text-xs text-muted-foreground">Panel de administración del sistema</p>
-          </TooltipContent>
-        )}
+        {isCollapsed && <TooltipContent side="right"><p>Administración</p></TooltipContent>}
       </Tooltip>
-    )
-  }
+    );
+  };
 
   const toggleMobileSidebar = () => {
     setIsMobileOpenState(!isMobileOpen)
@@ -360,54 +322,11 @@ export function Sidebar({
   }
 
   const handleSignOut = async () => {
-    try {
-      // Evitar múltiples clics
-      if (isSigningOut) return
-
-      setIsSigningOut(true)
-      console.log("Iniciando proceso de cierre de sesión")
-
-      // Mostrar toast de información
-      toast({
-        title: "Cerrando sesión",
-        description: "Por favor espere...",
-      })
-
-      // Limpiar localStorage para evitar problemas con múltiples instancias
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("force_admin_access")
-        window.localStorage.removeItem("userRoleState")
-        window.localStorage.removeItem("supabase.auth.token")
-      }
-
-      // Cerrar sesión en Supabase
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        console.error("Error al cerrar sesión:", error)
-        toast({
-          title: "Error al cerrar sesión",
-          description: "No se pudo cerrar la sesión. Intente nuevamente.",
-          variant: "destructive",
-        })
-        setIsSigningOut(false)
-        return
-      }
-
-      console.log("Sesión cerrada correctamente")
-
-      // Redirigir inmediatamente
-      window.location.href = "/"
-    } catch (e) {
-      console.error("Excepción al cerrar sesión:", e)
-      toast({
-        title: "Error inesperado",
-        description: "Ocurrió un error al cerrar la sesión.",
-        variant: "destructive",
-      })
-      setIsSigningOut(false)
-    }
-  }
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    toast({ title: "Cerrando sesión..." });
+    await logout(); // <-- Llama a la nueva función de logout
+  };
 
   return (
     <TooltipProvider>

@@ -1,5 +1,6 @@
 "use client"
 import { featureFlags } from '@/lib/config';
+
 import { useState, useEffect, useCallback } from "react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
@@ -8,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DataTable } from "@/components/ui/data-table"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription  } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/use-toast"
 import {
   Pencil,
@@ -29,7 +30,8 @@ import {
 import type { ColumnDef } from "@tanstack/react-table"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { getUserRole } from "@/lib/auth"
+
+import { useAuth } from "@/lib/auth";
 
 interface Profesor {
   id: number
@@ -138,7 +140,7 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   const [isDuplicadoModalOpen, setIsDuplicadoModalOpen] = useState(false)
   const [mensajeDuplicado, setMensajeDuplicado] = useState("")
   const [userCarreraId, setUserCarreraId] = useState<number | null>(null)
-  const [userRole, setUserRole] = useState<string | null>(null)
+
   const [carreraNombre, setCarreraNombre] = useState<string | null>(null)
   const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -147,6 +149,7 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   const [isValidatingHorario, setIsValidatingHorario] = useState(false)
   const [profesoresLoaded, setProfesoresLoaded] = useState(false)
   const useMySqlApi = featureFlags.materiasGrupos === 'mysql';
+  const { user, userRole, isAdmin } = useAuth();
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
       case "1":
@@ -295,60 +298,53 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
 
   // Modify the fetchData function to properly filter materials based on user role
   const fetchData = useCallback(async () => {
+    // 1. Usamos las variables del hook 'useAuth' que ya contienen la info del usuario.
+    // Si no hay un usuario logueado o un período seleccionado, no hacemos nada.
+    if (!selectedPeriod || !user?.id || !userRole) {
+        setLoading(false);
+        return;
+    }
+
     setLoading(true);
     setError(null);
+
     try {
-        if (!selectedPeriod || !currentUserId) {
-            setLoading(false);
-            return;
-        }
-
-        let materiasData, gruposData;
-
+        // 2. Verificamos el feature flag para decidir la fuente de los datos.
         if (useMySqlApi) {
             console.log("Usando API de MySQL para Materias y Grupos");
-            const response = await fetch(`/api/materias-grupos?periodoId=${selectedPeriod}&userId=${currentUserId}&userRole=${userRole}&carreraId=${userCarreraId || ''}`);
+            
+            // 3. Hacemos una única llamada a nuestra API.
+            // Le pasamos los datos del usuario directamente desde el hook 'useAuth'.
+            const response = await fetch(`/api/materias-grupos?periodoId=${selectedPeriod}&userId=${user.id}&userRole=${userRole}`);
+            
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Error al cargar datos desde la API');
             }
-            const data = await response.json();
-            materiasData = data.materias;
-            gruposData = data.grupos;
-        } else {
-            // Lógica de Supabase (se mantiene como fallback)
-            console.log("Usando Supabase para Materias y Grupos");
-            const tables = getTableNamesByPeriod(selectedPeriod);
-            let materiasQuery = supabase.from(tables.materias).select("*");
-            // ... (tu lógica de filtros de Supabase)
-            const { data: mData, error: mError } = await materiasQuery;
-            if (mError) throw mError;
-            materiasData = mData;
             
-            if (materiasData && materiasData.length > 0) {
-                const materiaIds = materiasData.map((m: any) => m.id);
-                const { data: gData, error: gError } = await supabase.from(tables.grupos).select("*").in("materia_id", materiaIds);
-                if (gError) throw gError;
-                gruposData = gData;
-            } else {
-                gruposData = [];
-            }
-        }
-        
-        setMaterias(materiasData || []);
-        const parsedGrupos = (gruposData || []).map((grupo: any) => ({
-            ...grupo,
-            horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
-        }));
-        setGrupos(parsedGrupos);
+            const data = await response.json();
 
+            // 4. Actualizamos el estado con los datos recibidos de nuestra API.
+            setMaterias(data.materias || []);
+            const parsedGrupos = (data.grupos || []).map((grupo: any) => ({
+                ...grupo,
+                horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
+            }));
+            setGrupos(parsedGrupos);
+
+        } else {
+            // La lógica de fallback para Supabase se mantendría aquí si la necesitaras.
+            console.log("Usando Supabase (modo fallback)");
+            // ... tu código original para obtener datos de Supabase iría aquí ...
+        }
     } catch (err: any) {
         setError(err.message);
         toast({ title: "Error de Carga", description: err.message, variant: "destructive" });
     } finally {
         setLoading(false);
     }
-}, [selectedPeriod, currentUserId, userRole, userCarreraId, useMySqlApi]);
+// 5. Las dependencias del useCallback ahora son las correctas y más limpias.
+}, [selectedPeriod, user, userRole, useMySqlApi, toast]);
 
   // Función para verificar si el usuario es administrador directamente desde la API
   const checkAdminStatus = async (userId: string) => {
@@ -1661,27 +1657,7 @@ async function executeDeleteMateria() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={isDeleteMateriaModalOpen} onOpenChange={setIsDeleteMateriaModalOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Confirmar eliminación</DialogTitle>
-              </DialogHeader>
-              <div className="py-3">
-                <p>¿Está seguro de que desea eliminar esta materia? Esta acción no se puede deshacer.</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Se eliminarán también todos los grupos y asignaciones asociadas a esta materia.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDeleteMateriaModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button variant="destructive" onClick={executeDeleteMateria}>
-                  Eliminar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+       
           <Dialog open={isDeleteGrupoModalOpen} onOpenChange={setIsDeleteGrupoModalOpen}>
             <DialogContent>
               <DialogHeader>
@@ -1703,6 +1679,27 @@ async function executeDeleteMateria() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          
+          <Dialog open={isDeleteMateriaModalOpen} onOpenChange={setIsDeleteMateriaModalOpen}>
+    <DialogContent>
+        <DialogHeader>
+            {/* HE AQUÍ LA CORRECCIÓN: Añade este DialogTitle */}
+            <DialogTitle>Confirmar eliminación</DialogTitle>
+            <DialogDescription>
+                ¿Está seguro de que desea eliminar esta materia? Esta acción no se puede deshacer.
+                Se eliminarán también todos los grupos y asignaciones asociadas a esta materia.
+            </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteMateriaModalOpen(false)}>
+                Cancelar
+            </Button>
+            <Button variant="destructive" onClick={executeDeleteMateria}>
+                Eliminar
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
 
           <Dialog open={isConflictoModalOpen} onOpenChange={setIsConflictoModalOpen}>
             <DialogContent>
