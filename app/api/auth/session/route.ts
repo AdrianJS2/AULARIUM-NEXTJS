@@ -1,22 +1,35 @@
-// RUTA: app/api/auth/session/route.ts
-import { NextResponse } from "next/server";
-import { verifyToken } from "@/lib/jwt";
-import * as cookie from "cookie"; // HE AQUÍ LA CORRECCIÓN
-import type { NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import jwt from 'jsonwebtoken';
+import { cookies } from 'next/headers'; // Usamos cookies para el token
+import pool from '@/lib/db';
 
-export async function GET(request: NextRequest) {
-    const cookies = cookie.parse(request.headers.get("cookie") || "");
-    const token = cookies.session_token;
+export async function GET() {
+    const cookieStore = cookies();
+    const token = cookieStore.get('authToken')?.value;
 
     if (!token) {
-        return NextResponse.json({ user: null }, { status: 401 });
+        return NextResponse.json({ error: 'No autorizado: No hay token.' }, { status: 401 });
     }
 
-    const userPayload = verifyToken(token);
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { userId: string };
 
-    if (!userPayload) {
-        return NextResponse.json({ user: null }, { status: 401 });
+        const [rows]: [any[], any] = await pool.query(
+            'SELECT id, nombre, email, rol, carrera_id FROM usuarios WHERE id = ?',
+            [decoded.userId]
+        );
+
+        if (rows.length === 0) {
+            return NextResponse.json({ error: 'No autorizado: Usuario no encontrado.' }, { status: 401 });
+        }
+
+        const user = rows[0];
+        
+        // No devolvemos la contraseña, solo los datos necesarios
+        return NextResponse.json({ user });
+
+    } catch (error) {
+        // Esto captura tokens expirados o inválidos
+        return NextResponse.json({ error: 'No autorizado: Token inválido o expirado.' }, { status: 401 });
     }
-    
-    return NextResponse.json({ user: userPayload });
 }

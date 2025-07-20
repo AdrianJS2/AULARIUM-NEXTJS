@@ -1,57 +1,56 @@
-import { NextResponse } from "next/server";
-import pool from "@/lib/db";
-import bcrypt from "bcryptjs"
-import { signToken } from "@/lib/jwt";
-import * as cookie from "cookie";
-import type { NextRequest } from "next/server";
-export async function POST(request: NextRequest) {
-    try {
-        const { email, password } = await request.json();
-        if (!email || !password) {
-            return NextResponse.json({ error: "Email y contraseña son requeridos" }, { status: 400 });
-        }
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { cookies } from 'next/headers';
 
-        // 1. Buscar al usuario por email en la base de datos MySQL.
-        const [rows]: [any[], any] = await pool.query("SELECT * FROM usuarios WHERE email = ?", [email]);
+export async function POST(req: Request) {
+    try {
+        const { email, password } = await req.json();
+        const connection = await pool.getConnection();
+
+        const [rows]: [any[], any] = await connection.query(
+            'SELECT * FROM usuarios WHERE email = ?',
+            [email]
+        );
 
         if (rows.length === 0) {
-            // Si no se encuentra el usuario, devuelve un error.
-            return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
+            connection.release();
+            return NextResponse.json({ error: "Credenciales inválidas." }, { status: 401 });
         }
 
         const user = rows[0];
+        const isMatch = await bcrypt.compare(password, user.password);
 
-        // 2. Comparar la contraseña proporcionada con el hash guardado en la base de datos.
-        const passwordIsValid = await bcrypt.compare(password, user.password);
-
-        if (!passwordIsValid) {
-            // Si la contraseña no coincide, devuelve un error.
-            return NextResponse.json({ error: "Credenciales inválidas" }, { status: 401 });
+        if (!isMatch) {
+            connection.release();
+            return NextResponse.json({ error: "Credenciales inválidas." }, { status: 401 });
         }
-
-        // 3. Si las credenciales son válidas, crear un token de sesión (JWT).
-        const token = signToken({ id: user.id, email: user.email, rol: user.rol });
         
-        // 4. Guardar el token en una cookie segura (HttpOnly).
-        const serializedCookie = cookie.serialize("session_token", token, {
+        // Creamos el token JWT
+        const token = jwt.sign(
+            { userId: user.id, rol: user.rol },
+            process.env.JWT_SECRET as string,
+            { expiresIn: '1d' } // El token expira en 1 día
+        );
+
+        // Guardamos el token en una cookie HttpOnly
+        cookies().set('authToken', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            maxAge: 60 * 60 * 24, // 1 día
-            path: "/",
-            sameSite: "lax",
+            secure: process.env.NODE_ENV !== 'development',
+            sameSite: 'strict',
+            maxAge: 60 * 60 * 24, // 1 día en segundos
+            path: '/',
         });
         
-        // Excluimos la contraseña del objeto de usuario que devolvemos al frontend.
+        connection.release();
+        
+        // Devolvemos el usuario sin la contraseña
         const { password: _, ...userWithoutPassword } = user;
+        return NextResponse.json({ user: userWithoutPassword });
 
-        // 5. Devolver una respuesta exitosa con los datos del usuario y la cookie de sesión.
-        return new NextResponse(JSON.stringify({ user: userWithoutPassword }), {
-            status: 200,
-            headers: { "Set-Cookie": serializedCookie },
-        });
-
-    } catch (error: any) {
-        console.error("API /api/auth/login Error:", error);
-        return NextResponse.json({ error: "Error interno del servidor", details: error.message }, { status: 500 });
+    } catch (error) {
+        console.error("Error en API de login:", error);
+        return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
     }
 }

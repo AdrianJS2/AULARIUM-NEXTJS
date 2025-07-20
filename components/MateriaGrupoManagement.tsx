@@ -2,7 +2,7 @@
 import { featureFlags } from '@/lib/config';
 
 import { useState, useEffect, useCallback } from "react"
-import { supabase } from "@/lib/supabase"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -139,18 +139,18 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   const [conflictoHorario, setConflictoHorario] = useState<ConflictoHorario | null>(null)
   const [isDuplicadoModalOpen, setIsDuplicadoModalOpen] = useState(false)
   const [mensajeDuplicado, setMensajeDuplicado] = useState("")
-  const [userCarreraId, setUserCarreraId] = useState<number | null>(null)
+  
 
   const [carreraNombre, setCarreraNombre] = useState<string | null>(null)
-  const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+ 
   const [loading, setLoading] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState("info")
   const [isValidatingHorario, setIsValidatingHorario] = useState(false)
   const [profesoresLoaded, setProfesoresLoaded] = useState(false)
-  const { user, isAdmin } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const useMySqlApi = featureFlags.materiasGrupos === 'mysql';
-  
+  const [dataLoading, setDataLoading] = useState(true);
 
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
@@ -178,70 +178,70 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   }
 
   // Función para crear asignaciones automáticas
-  const crearAsignacionesAutomaticas = async (nuevoGrupo: any, materiaId: number) => {
-    if (!selectedPeriod) return
+  // const crearAsignacionesAutomaticas = async (nuevoGrupo: any, materiaId: number) => {
+  //   if (!selectedPeriod) return
 
-    const tables = getTableNamesByPeriod(selectedPeriod)
+  //   const tables = getTableNamesByPeriod(selectedPeriod)
 
-    try {
-      // Obtener aulas disponibles
-      const { data: aulas, error: aulasError } = await supabase.from("aulas").select("*")
+  //   try {
+  //     // Obtener aulas disponibles
+  //     const { data: aulas, error: aulasError } = await supabase.from("aulas").select("*")
 
-      if (aulasError) throw aulasError
+  //     if (aulasError) throw aulasError
 
-      // Obtener todas las asignaciones existentes
-      const { data: asignacionesExistentes, error: asignacionesError } = await supabase
-        .from(tables.asignaciones)
-        .select("*")
+  //     // Obtener todas las asignaciones existentes
+  //     const { data: asignacionesExistentes, error: asignacionesError } = await supabase
+  //       .from(tables.asignaciones)
+  //       .select("*")
 
-      if (asignacionesError) throw asignacionesError
+  //     if (asignacionesError) throw asignacionesError
 
-      // Crear asignaciones para cada horario del grupo
-      const nuevasAsignaciones = []
+  //     // Crear asignaciones para cada horario del grupo
+  //     const nuevasAsignaciones = []
 
-      for (const horario of nuevoGrupo.horarios) {
-        // Buscar un aula disponible para este horario
-        const aulaDisponible = aulas.find((aula) => {
-          // Verificar si el aula tiene capacidad suficiente
-          if (aula.capacidad < nuevoGrupo.alumnos) return false
+  //     for (const horario of nuevoGrupo.horarios) {
+  //       // Buscar un aula disponible para este horario
+  //       const aulaDisponible = aulas.find((aula) => {
+  //         // Verificar si el aula tiene capacidad suficiente
+  //         if (aula.capacidad < nuevoGrupo.alumnos) return false
 
-          // Verificar si el aula ya está ocupada en este horario
-          return !asignacionesExistentes.some(
-            (asignacion) =>
-              asignacion.aula_id === aula.id &&
-              asignacion.dia === horario.dia &&
-              asignacion.turno === nuevoGrupo.turno &&
-              ((asignacion.hora_inicio <= horario.hora_inicio && asignacion.hora_fin > horario.hora_inicio) ||
-                (asignacion.hora_inicio < horario.hora_fin && asignacion.hora_fin >= horario.hora_fin)),
-          )
-        })
+  //         // Verificar si el aula ya está ocupada en este horario
+  //         return !asignacionesExistentes.some(
+  //           (asignacion) =>
+  //             asignacion.aula_id === aula.id &&
+  //             asignacion.dia === horario.dia &&
+  //             asignacion.turno === nuevoGrupo.turno &&
+  //             ((asignacion.hora_inicio <= horario.hora_inicio && asignacion.hora_fin > horario.hora_inicio) ||
+  //               (asignacion.hora_inicio < horario.hora_fin && asignacion.hora_fin >= horario.hora_fin)),
+  //         )
+  //       })
 
-        // Crear la asignación (con o sin aula)
-        nuevasAsignaciones.push({
-          grupo_id: nuevoGrupo.id,
-          aula_id: aulaDisponible?.id || null,
-          materia_id: materiaId,
-          dia: horario.dia,
-          hora_inicio: horario.hora_inicio,
-          hora_fin: horario.hora_fin,
-          turno: nuevoGrupo.turno,
-          periodo_id: Number(selectedPeriod),
-          carrera_id: userCarreraId,
-        })
-      }
+  //       // Crear la asignación (con o sin aula)
+  //       nuevasAsignaciones.push({
+  //         grupo_id: nuevoGrupo.id,
+  //         aula_id: aulaDisponible?.id || null,
+  //         materia_id: materiaId,
+  //         dia: horario.dia,
+  //         hora_inicio: horario.hora_inicio,
+  //         hora_fin: horario.hora_fin,
+  //         turno: nuevoGrupo.turno,
+  //         periodo_id: Number(selectedPeriod),
+  //         carrera_id: userCarreraId,
+  //       })
+  //     }
 
-      // Insertar las nuevas asignaciones
-      if (nuevasAsignaciones.length > 0) {
-        const { error: insertError } = await supabase.from(tables.asignaciones).insert(nuevasAsignaciones)
+  //     // Insertar las nuevas asignaciones
+  //     if (nuevasAsignaciones.length > 0) {
+  //       const { error: insertError } = await supabase.from(tables.asignaciones).insert(nuevasAsignaciones)
 
-        if (insertError) throw insertError
+  //       if (insertError) throw insertError
 
-        console.log(`Creadas ${nuevasAsignaciones.length} asignaciones automáticas para el grupo ${nuevoGrupo.numero}`)
-      }
-    } catch (error) {
-      console.error("Error al crear asignaciones automáticas:", error)
-    }
-  }
+  //       console.log(`Creadas ${nuevasAsignaciones.length} asignaciones automáticas para el grupo ${nuevoGrupo.numero}`)
+  //     }
+  //   } catch (error) {
+  //     console.error("Error al crear asignaciones automáticas:", error)
+  //   }
+  // }
 
   // Función para cargar todos los profesores directamente
 //   const loadAllProfesores = async () => {
@@ -300,61 +300,46 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
 
   // Modify the fetchData function to properly filter materials based on user role
   const fetchData = useCallback(async () => {
-    // Si no hay usuario o período, no hacemos nada.
-    if (!user || !selectedPeriod) {
-      setLoading(false);
+    if (authLoading || !user || !selectedPeriod) {
       return;
     }
-
-    setLoading(true);
+    setDataLoading(true);
     setError(null);
-    console.log("Iniciando carga de datos para Materias, Grupos y Profesores...");
-
     try {
       if (useMySqlApi) {
-        // Hacemos las llamadas a nuestra API de forma concurrente para mayor eficiencia.
         const [materiasGruposRes, profesoresRes] = await Promise.all([
           fetch(`/api/materias-grupos?periodoId=${selectedPeriod}`),
           fetch('/api/profesores')
         ]);
-
-        if (!materiasGruposRes.ok) {
-          const errorData = await materiasGruposRes.json();
-          throw new Error(errorData.error || 'Error al cargar materias y grupos.');
-        }
-
-        if (!profesoresRes.ok) {
-          const errorData = await profesoresRes.json();
-          throw new Error(errorData.error || 'Error al cargar profesores.');
-        }
-
+        if (!materiasGruposRes.ok) throw new Error((await materiasGruposRes.json()).error || 'Error al cargar datos.');
+        if (!profesoresRes.ok) throw new Error((await profesoresRes.json()).error || 'Error al cargar profesores.');
+        
         const materiasGruposData = await materiasGruposRes.json();
         const profesoresData = await profesoresRes.json();
         
-        // Actualizamos el estado con los datos recibidos.
         setMaterias(materiasGruposData.materias || []);
-        const parsedGrupos = (materiasGruposData.grupos || []).map((grupo: any) => ({
-            ...grupo,
-            horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
-        }));
-        setGrupos(parsedGrupos);
+        setGrupos((materiasGruposData.grupos || []).map((g: any) => ({ ...g, horarios: Array.isArray(g.horarios) ? g.horarios : JSON.parse(g.horarios || "[]") })));
         setProfesores(profesoresData || []);
-        console.log(`Carga exitosa: ${profesoresData.length} profesores, ${materiasGruposData.materias.length} materias.`);
-
-      } else {
-        // Lógica de fallback para Supabase (si aún la necesitas).
-        console.warn("Usando modo fallback de Supabase.");
       }
     } catch (err: any) {
       setError(err.message);
-      toast({ title: "Error de Carga", description: err.message, variant: "destructive" });
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
-  }, [selectedPeriod, user, useMySqlApi, toast]); // Dependemos del usuario y el período.
+  }, [selectedPeriod, user, authLoading, useMySqlApi]);
+
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!authLoading && user) {
+        fetchData();
+    }
+  }, [authLoading, user, fetchData]);
+
+  // ✅ PASO 3: Simplificar el useEffect para que dependa del estado de carga de la autenticación
+  useEffect(() => {
+    if (!authLoading && user) {
+        fetchData();
+    }
+  }, [authLoading, user, fetchData]); 
 
   // Función para verificar si el usuario es administrador directamente desde la API
   // const checkAdminStatus = async (userId: string) => {
@@ -369,40 +354,40 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   //   }
   // }
 
-  useEffect(() => {
-    async function fetchUserData() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+  // useEffect(() => {
+  //   async function fetchUserData() {
+  //     try {
+  //       const {
+  //         data: { user },
+  //       } = await supabase.auth.getUser()
 
-        if (user) {
-          setCurrentUserId(user.id)
+  //       if (user) {
+  //         setCurrentUserId(user.id)
 
-          // Verificar si es admin directamente desde la API
-          const adminStatus = await checkAdminStatus(user.id)
-          console.log("Estado de admin desde API:", adminStatus)
-          setIsUserAdmin(adminStatus)
+  //         // Verificar si es admin directamente desde la API
+  //         const adminStatus = await checkAdminStatus(user.id)
+  //         console.log("Estado de admin desde API:", adminStatus)
+  //         setIsUserAdmin(adminStatus)
 
-          // También obtener el rol para otros usos
-          const { rol, carrera_id, carrera_nombre } = await getUserRole(user.id)
-          setUserRole(rol)
-          setUserCarreraId(carrera_id)
-          setCarreraNombre(carrera_nombre)
+  //         // También obtener el rol para otros usos
+  //         const { rol, carrera_id, carrera_nombre } = await getUserRole(user.id)
+  //         setUserRole(rol)
+  //         setUserCarreraId(carrera_id)
+  //         setCarreraNombre(carrera_nombre)
 
-          // Si es admin, cargar todos los profesores inmediatamente
-          if (adminStatus) {
-            console.log("Usuario es admin, cargando todos los profesores...")
-            await loadAllProfesores()
-          }
-        }
-      } catch (error) {
-        console.error("Error obteniendo datos del usuario:", error)
-      }
-    }
+  //         // Si es admin, cargar todos los profesores inmediatamente
+  //         if (adminStatus) {
+  //           console.log("Usuario es admin, cargando todos los profesores...")
+  //           await loadAllProfesores()
+  //         }
+  //       }
+  //     } catch (error) {
+  //       console.error("Error obteniendo datos del usuario:", error)
+  //     }
+  //   }
 
-    fetchUserData()
-  }, [])
+  //   fetchUserData()
+  // }, [])
 
   // Cargar profesores inmediatamente después de obtener el rol del usuario
   // useEffect(() => {
@@ -416,61 +401,64 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   //   }
   // }, [currentUserId, userRole, profesoresLoaded, fetchProfesores, isUserAdmin])
 
-  useEffect(() => {
-    if (selectedPeriod && currentUserId !== null) {
-      fetchData()
-    }
-  }, [fetchData, selectedPeriod, currentUserId])
+  // useEffect(() => {
+  //   if (selectedPeriod && currentUserId !== null) {
+  //     fetchData()
+  //   }
+  // }, [fetchData, selectedPeriod, currentUserId])
 
   async function addMateria() {
     if (!nombreMateria.trim() || !profesorId) {
         toast({ title: "Error", description: "Todos los campos son requeridos.", variant: "destructive" });
         return;
-
     }
-    if (!user || !user.carrera_id) {
+
+    // ✅ 6. LA VALIDACIÓN CLAVE, AHORA MÁS FIABLE QUE NUNCA
+    // Esta comprobación se hace sobre el objeto `user` del contexto, que es la única fuente de verdad.
+    if (!user) {
       toast({
           title: "Error de Sesión",
-          description: "No se pudo identificar al usuario o su carrera. Por favor, recarga la página o vuelve a iniciar sesión.",
+          description: "Tu sesión ha expirado. Por favor, vuelve a iniciar sesión.",
           variant: "destructive"
       });
       return;
   }
+  
+  if (!user.carrera_id) {
+      toast({
+          title: "Acción no permitida",
+          description: "Tu usuario no tiene una carrera asignada. Contacta a un administrador.",
+          variant: "destructive"
+      });
+      return;
+  }
+
     setLoading(true);
-     const materiaData = {
+    const materiaData = {
         nombre: nombreMateria,
         profesor_id: profesorId === "pendiente" ? null : parseInt(profesorId),
         carrera_id: user.carrera_id, // Usamos la carrera del usuario del hook.
         usuario_id: user.id          // Usamos el ID del usuario del hook.
     };
-    setLoading(true);
-    try {
-        // HE AQUÍ LA CORRECCIÓN: Se añade el if/else para usar la API o Supabase.
-        if (useMySqlApi) {
-          const response = await fetch('/api/materias-grupos', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ type: 'materia', payload: materiaData, periodoId: selectedPeriod }),
-          });
 
-          if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Error al crear la materia vía API');
-          }
-      }
-        
-        
-        else {
-            const tables = getTableNamesByPeriod(selectedPeriod);
-            const { error } = await supabase.from(tables.materias).insert([materiaData]);
-            if (error) throw error;
-        }
+    try {
+        if (useMySqlApi) {
+            const response = await fetch('/api/materias-grupos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'materia', payload: materiaData, periodoId: selectedPeriod }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Error al crear la materia vía API');
+            }
+        } 
 
         await fetchData();
         setNombreMateria("");
         setProfesorId(null);
         toast({ title: "Éxito", description: "Materia creada correctamente." });
-
     } catch (err) {
         setError((err as Error).message);
         toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
@@ -478,7 +466,6 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
         setLoading(false);
     }
 }
-
 async function updateMateria() {
   if (!editingMateria) return;
   if (!nombreMateria.trim()) {
@@ -1113,6 +1100,15 @@ async function executeDeleteMateria() {
       id: "actions",
       cell: ({ row }) => {
         const materia = row.original
+
+
+        if (authLoading || dataLoading) {
+          return (
+            <div className="flex items-center justify-center min-h-[400px]">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          );
+        }
         return (
           <div className="flex justify-end space-x-2">
             <Button variant="outline" size="sm" onClick={() => handleEditMateria(materia)}>

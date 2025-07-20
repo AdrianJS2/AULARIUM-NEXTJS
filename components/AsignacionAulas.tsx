@@ -1,4 +1,5 @@
 "use client"
+
 import { featureFlags } from '@/lib/config'; // Importar feature flags
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/lib/auth"
@@ -13,7 +14,6 @@ import { DndContext, closestCenter } from "@dnd-kit/core"
 import { restrictToWindowEdges } from "@dnd-kit/modifiers"
 import { useToast } from "@/components/ui/use-toast"
 import { FileDown } from "lucide-react"
-
 interface Grupo {
   id: number
   materia_id: number
@@ -530,7 +530,7 @@ const handleDragEnd = async (event: any) => {
             </Alert>
 
             {/* Mostrar el botón de solicitar asignación para directores incluso cuando no hay grupos */}
-            {userRole === "director" && (
+            {user?.rol === "director" && (
               <div className="flex justify-end mt-4">
                 <Button
                   onClick={handleSolicitarAsignacion}

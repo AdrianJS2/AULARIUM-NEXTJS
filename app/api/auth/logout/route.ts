@@ -1,19 +1,20 @@
-// RUTA: app/api/auth/logout/route.ts
-import { NextResponse } from "next/server";
-import * as cookie from "cookie"; // HE AQUÍ LA CORRECCIÓN
-import type { NextRequest } from "next/server";
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
-export async function POST(request: NextRequest) {
-    const serializedCookie = cookie.serialize("session_token", "", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        maxAge: -1,
-        path: "/",
-        sameSite: "lax",
-    });
+export async function POST() {
+    try {
+        // Eliminamos la cookie estableciendo su tiempo de vida en el pasado
+        cookies().set('authToken', '', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV !== 'development',
+            sameSite: 'strict',
+            expires: new Date(0), // Fecha de expiración en el pasado
+            path: '/',
+        });
 
-    return new NextResponse(JSON.stringify({ message: "Sesión cerrada" }), {
-        status: 200,
-        headers: { "Set-Cookie": serializedCookie },
-    });
+        return NextResponse.json({ message: 'Sesión cerrada exitosamente.' });
+    } catch (error) {
+        console.error("Error en API de logout:", error);
+        return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
+    }
 }

@@ -11,21 +11,21 @@ import { useAuth } from "@/lib/auth";// Se usa el hook para la info del usuario
 interface DashboardProps {
   selectedPeriod: string
   onNavigate: (section: string) => void
-  userRole?: string | null
-  userCarreraId?: string | null
-  isUserAdmin?: boolean
-  currentUserId?: string | null
-}
 
+}
+const initialStats = {
+  profesores: 0,
+  materias: 0,
+  grupos: 0,
+  aulas: 0,
+  asignaciones: 0,
+  porcentajeAsignado: 0,
+  userMateriaCount: 0, // Añadido para la vista personal
+  userGrupoCount: 0,   // Añadido para la vista personal
+  userAsignacionCount: 0 // Añadido para la vista personal
+};
 export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps) {
-  const [stats, setStats] = useState({
-    profesores: 0,
-    materias: 0,
-    grupos: 0,
-    aulas: 0,
-    asignaciones: 0,
-    porcentajeAsignado: 0,
-  })
+  const [stats, setStats] = useState({initialStats})
   const [loading, setLoading] = useState(true)
   const [periodoNombre, setPeriodoNombre] = useState("")
   const [distribucionTurnos, setDistribucionTurnos] = useState({ mañana: 0, tarde: 0 })
@@ -36,14 +36,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
     Jueves: 0,
     Viernes: 0,
   })
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [userCarreraId, setUserCarreraId] = useState<number | null>(null)
-  const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [userName, setUserName] = useState<string | null>(null)
-  const [userMateriaCount, setUserMateriaCount] = useState(0)
-  const [userGrupoCount, setUserGrupoCount] = useState(0)
-  const [userAsignacionCount, setUserAsignacionCount] = useState(0)
+
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const { user, isAdmin } = useAuth(); // Se usa el hook para la info del usuario
 
@@ -58,12 +51,11 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
       }
       const data = await response.json();
 
-      setStats(data.stats);
-      setPeriodoNombre(data.periodoNombre);
-      setUserName(data.userName);
-      setDistribucionTurnos(data.distribucionTurnos);
-      setDistribucionDias(data.distribucionDias);
-      setRecentActivity(data.recentActivity || []);
+      setStats(data.stats || initialStats);
+            setPeriodoNombre(data.periodoNombre || "No definido");
+            setDistribucionTurnos(data.distribucionTurnos || { mañana: 0, tarde: 0 });
+            setDistribucionDias(data.distribucionDias || { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0 });
+            setRecentActivity(data.recentActivity || []);
 
     } catch (error) {
       console.error("Error fetching stats:", error);
@@ -117,13 +109,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
 
 
 
-  useEffect(() => {
-    // Asegurar que se carguen los datos incluso si selectedPeriod ya está establecido
-    if (currentUserId !== null) {
-      fetchStats()
-      fetchPeriodoNombre()
-    }
-  }, [selectedPeriod, fetchStats, currentUserId])
+  
 
   const fetchDistribucionTurnos = async () => {
     try {
@@ -187,29 +173,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
     }
   }
 
-  const fetchPersonalDistribucionDias = async (materiaIds: number[]) => {
-    try {
-      if (!selectedPeriod || materiaIds.length === 0) return
-
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      const { data, error } = await supabase.from(tables.asignaciones).select("dia").in("materia_id", materiaIds)
-
-      if (error) throw error
-
-      const distribucion = {
-        Lunes: data?.filter((a) => a.dia === "Lunes").length || 0,
-        Martes: data?.filter((a) => a.dia === "Martes").length || 0,
-        Miércoles: data?.filter((a) => a.dia === "Miércoles").length || 0,
-        Jueves: data?.filter((a) => a.dia === "Jueves").length || 0,
-        Viernes: data?.filter((a) => a.dia === "Viernes").length || 0,
-      }
-
-      setDistribucionDias(distribucion)
-    } catch (error) {
-      console.error("Error fetching personal distribución por días:", error)
-    }
-  }
 
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
@@ -249,9 +212,8 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
 
   // Función para obtener el máximo valor en la distribución de días
   const getMaxDiaValue = () => {
-    return Math.max(...Object.values(distribucionDias))
-  }
-
+    return Math.max(...Object.values(distribucionDias), 1); // Evita división por cero
+};
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -267,13 +229,9 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
       </Alert>
     )
   }
-
-  // Render different dashboards based on user role
-  if (isUserAdmin) {
+  if (isAdmin) {
     // Admin Dashboard - Global View
     return (
-        
-  
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -379,7 +337,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
 
         {/* Gráficos y estadísticas adicionales */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Progreso de asignación */}
           <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -415,7 +372,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
 
-          {/* Distribución por turnos */}
           <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -469,7 +425,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
 
-          {/* Distribución por días */}
           <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800 lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -497,7 +452,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
 
-          {/* Resumen del periodo */}
           <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800 lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -577,7 +531,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
         </div>
-          {isUserAdmin && <MigrationStatus />}
+          {isAdmin && <MigrationStatus />}
       </div>
     )
   } else {
@@ -588,7 +542,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
           <div>
             <h1 className="text-3xl font-bold text-primary">Mi Panel de Control</h1>
             <p className="text-muted-foreground mt-1">
-              Bienvenido, {userName || "Director"} - Periodo: {periodoNombre}
+              Bienvenido, {user?.nombre || "Director"} - Periodo: {periodoNombre}
             </p>
           </div>
           <div className="flex gap-2">
@@ -611,7 +565,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
               <BookOpen className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{userMateriaCount}</div>
+              <div className="text-2xl font-bold">{stats.userMateriaCount}</div>
               <p className="text-xs text-muted-foreground">Materias creadas por ti</p>
             </CardContent>
             <CardFooter className="p-2">
@@ -632,7 +586,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{userGrupoCount}</div>
+              <div className="text-2xl font-bold">{stats.userGrupoCount}</div>
               <p className="text-xs text-muted-foreground">Grupos en tus materias</p>
             </CardContent>
             <CardFooter className="p-2">
@@ -653,7 +607,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
               <School className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{userAsignacionCount}</div>
+              <div className="text-2xl font-bold">{stats.userAsignacionCount}</div>
               <p className="text-xs text-muted-foreground">Aulas asignadas a tus grupos</p>
             </CardContent>
             <CardFooter className="p-2">
@@ -669,7 +623,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
           </Card>
         </div>
 
-        {/* Progreso personal */}
         <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -694,20 +647,18 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Total de mis grupos</p>
-                  <p className="text-xl font-bold">{userGrupoCount}</p>
+                  <p className="text-xl font-bold">{stats.userGrupoCount}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Mis asignaciones</p>
-                  <p className="text-xl font-bold">{userAsignacionCount}</p>
+                  <p className="text-xl font-bold">{stats.userAsignacionCount}</p>
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Actividad reciente y distribución */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Actividad reciente */}
           <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -743,7 +694,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
 
-          {/* Distribución por turnos personal */}
           <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -798,7 +748,6 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
           </Card>
         </div>
 
-        {/* Información del sistema */}
         <Card className="bg-white dark:bg-oxford-blue border border-gray-200 dark:border-gray-800">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -841,11 +790,11 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
                 <ul className="space-y-1 text-sm">
                   <li className="flex justify-between">
                     <span className="text-muted-foreground">Rol:</span>
-                    <span className="font-medium capitalize">{userRole || "Director"}</span>
+                    <span className="font-medium capitalize">{user?.rol || "Director"}</span>
                   </li>
                   <li className="flex justify-between">
                     <span className="text-muted-foreground">Materias creadas:</span>
-                    <span className="font-medium">{userMateriaCount}</span>
+                    <span className="font-medium">{stats.userMateriaCount}</span>
                   </li>
                 </ul>
               </div>
@@ -854,8 +803,9 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
         </Card>
         
       </div>
-      
     )
   }
+  // Render different dashboards based on user role
+  
   
 }

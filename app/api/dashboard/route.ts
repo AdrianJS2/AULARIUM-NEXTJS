@@ -15,6 +15,9 @@ const getTableNames = (periodoId: string) => {
 };
 
 export async function GET(request: NextRequest) {
+
+
+    
     const { searchParams } = new URL(request.url);
     const periodoId = searchParams.get('periodoId');
     const userId = searchParams.get('userId');
@@ -77,13 +80,26 @@ export async function GET(request: NextRequest) {
         stats.porcentajeAsignado = stats.grupos > 0 ? Math.min(100, Math.round((stats.asignaciones / stats.grupos) * 100)) : 0;
         
         // --- DATOS PARA GRÁFICOS ---
-        const [turnosResult]: [any[], any] = await pool.query(`SELECT turno, COUNT(*) as count FROM ${tables.grupos} GROUP BY turno`);
+        let turnosQuery = `SELECT turno, COUNT(*) as count FROM ${tables.grupos}`;
+        let diasQuery = `SELECT dia, COUNT(*) as count FROM ${tables.asignaciones}`;
+        const paramsGraficos: (number[] | number)[] = [];
+        
+        if (!admin && materiaIds.length > 0) {
+            turnosQuery += ` WHERE materia_id IN (?)`;
+            diasQuery += ` WHERE materia_id IN (?)`;
+            paramsGraficos.push(materiaIds);
+        }
+        
+        turnosQuery += ` GROUP BY turno`;
+        diasQuery += ` GROUP BY dia`;
+        
+        const [turnosResult]: [any[], any] = await pool.query(turnosQuery, paramsGraficos);
         const distribucionTurnos = {
             mañana: turnosResult.find(t => t.turno === 'MAÑANA')?.count || 0,
             tarde: turnosResult.find(t => t.turno === 'TARDE')?.count || 0
         };
-
-        const [diasResult]: [any[], any] = await pool.query(`SELECT dia, COUNT(*) as count FROM ${tables.asignaciones} GROUP BY dia`);
+        
+        const [diasResult]: [any[], any] = await pool.query(diasQuery, paramsGraficos);
         const distribucionDias = {
             Lunes: diasResult.find(d => d.dia === 'Lunes')?.count || 0,
             Martes: diasResult.find(d => d.dia === 'Martes')?.count || 0,
@@ -91,7 +107,7 @@ export async function GET(request: NextRequest) {
             Jueves: diasResult.find(d => d.dia === 'Jueves')?.count || 0,
             Viernes: diasResult.find(d => d.dia === 'Viernes')?.count || 0
         };
-
+        
         // --- ACTIVIDAD RECIENTE (para no-admins) ---
         let recentActivity: any[] = [];
         if(!admin) {
