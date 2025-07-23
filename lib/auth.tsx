@@ -18,6 +18,7 @@ type AuthContextType = {
     isAdmin: boolean;
     login: (credentials: { email: string; password: string }) => Promise<{ ok: boolean; error?: string }>;
     logout: () => Promise<void>;
+    checkSession: () => void;
 };
 
 // Creación del contexto de autenticación
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     const isAdmin = user?.rol === 'admin';
     
-    const value = { user, loading, isAdmin, login, logout };
+    const value = { user, loading, isAdmin, login, logout,checkSession  };
 
     // Esta línea ahora funcionará porque el archivo es .tsx
     return (

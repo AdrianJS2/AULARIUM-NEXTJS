@@ -521,7 +521,7 @@ const handleDragEnd = async (event: any) => {
                   : selectedPeriod === "2"
                     ? "Mayo-Agosto"
                     : "Septiembre-Diciembre"}
-                .{!isUserAdmin && " Por favor, cree grupos en la sección de Gestión de Materias y Grupos primero."}
+                .{user?.rol == "admin" && " Por favor, cree grupos en la sección de Gestión de Materias y Grupos primero."}
               </AlertDescription>
             </Alert>
 

@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useAuth } from "@/lib/auth" // Asegúrate que la ruta sea correcta
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Settings, Moon, Sun, RotateCcw, Check, Layout, Type } from "lucide-react"
+import { Settings, Moon, Sun, RotateCcw, Check, Layout, Type, Eye, EyeOff } from "lucide-react" // Importa Eye y EyeOff
 import { useTheme } from "next-themes"
 import { useToast } from "@/components/ui/use-toast"
 import { Label } from "@/components/ui/label"
@@ -12,7 +13,6 @@ import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 
@@ -31,6 +31,7 @@ export function ConfigDialog() {
   const [activeTab, setActiveTab] = useState("perfil")
   const { toast } = useToast()
   const { setTheme, theme } = useTheme()
+  const { user, checkSession } = useAuth()
   const [userSettings, setUserSettings] = useState<UserSettings>({
     notifications: true,
     autoRefresh: true,
@@ -49,43 +50,12 @@ export function ConfigDialog() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [userProfile, setUserProfile] = useState({
-    fullName: "",
-    email: "",
-    role: "",
-  })
+
+  
   const router = useRouter()
 
   // Fetch user profile when dialog opens
-  useEffect(() => {
-    async function fetchUserProfile() {
-      if (open) {
-        try {
-          const { data: sessionData } = await supabase.auth.getSession()
-          if (!sessionData.session) return
-
-          const userId = sessionData.session.user.id
-
-          // Get user data from database
-          const { data, error } = await supabase.from("usuarios").select("*").eq("id", userId).single()
-
-          if (error) throw error
-
-          if (data) {
-            setUserProfile({
-              fullName: data.nombre || sessionData.session.user.user_metadata?.full_name || "Usuario",
-              email: data.email || sessionData.session.user.email || "",
-              role: data.rol || "usuario",
-            })
-          }
-        } catch (err) {
-          console.error("Error fetching user profile:", err)
-        }
-      }
-    }
-
-    fetchUserProfile()
-  }, [open])
+  
 
   // Load user settings from localStorage on component mount
   useEffect(() => {
@@ -141,66 +111,51 @@ export function ConfigDialog() {
     }
   }
 
+  
   const handleUpdatePassword = async () => {
-    // Validate passwords
-    if (!passwordForm.currentPassword) {
-      toast({
-        title: "Error",
-        description: "Debe ingresar su contraseña actual",
-        variant: "destructive",
-      })
-      return
-    }
-
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Las contraseñas nuevas no coinciden",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (passwordForm.newPassword.length < 6) {
-      toast({
-        title: "Error",
-        description: "La contraseña debe tener al menos 6 caracteres",
-        variant: "destructive",
-      })
-      return
+        toast({ title: "Error", description: "Las nuevas contraseñas no coinciden.", variant: "destructive" })
+        return
     }
 
     setLoading(true)
     try {
-      // Update password
-      const { error } = await supabase.auth.updateUser({
-        password: passwordForm.newPassword,
-      })
+        const response = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                currentPassword: passwordForm.currentPassword,
+                newPassword: passwordForm.newPassword,
+            }),
+        });
 
-      if (error) throw error
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'No se pudo actualizar la contraseña.');
+        }
 
-      toast({
-        title: "Contraseña actualizada",
-        description: "Su contraseña ha sido actualizada correctamente.",
-      })
+        toast({
+            title: "Éxito",
+            description: "Tu contraseña ha sido actualizada.",
+        })
 
-      // Reset form
-      setPasswordForm({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      })
+        setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" })
+        if (checkSession) {
+            checkSession(); // Refresca los datos del usuario en toda la app
+        }
+
     } catch (error: any) {
-      console.error("Error updating password:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo actualizar la contraseña. Verifique que su contraseña actual sea correcta.",
-        variant: "destructive",
-      })
+        toast({
+            title: "Error al actualizar",
+            description: error.message,
+            variant: "destructive",
+        })
     } finally {
-      setLoading(false)
+        setLoading(false)
     }
-  }
+}
+
+
 
   const handleToggleSetting = (setting: keyof UserSettings) => {
     const newSettings = {
@@ -556,21 +511,17 @@ export function ConfigDialog() {
                 <div className="grid grid-cols-2 gap-4 bg-muted/50 p-4 rounded-lg">
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Nombre:</p>
-                    <p className="font-medium">{userProfile.fullName}</p>
+                    <p className="font-medium">{user?.nombre}</p>
                   </div>
                   <div className="space-y-1 text-right">
                     <p className="text-sm text-muted-foreground">Email:</p>
-                    <p className="font-medium">{userProfile.email}</p>
+                    <p className="font-medium">{user?.email}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Rol:</p>
                     <p className="font-medium">
-                      {userProfile.role === "admin"
-                        ? "Administrador"
-                        : userProfile.role === "director"
-                          ? "Director"
-                          : "Usuario"}
-                    </p>
+                                                {user?.rol === "admin" ? "Administrador" : user?.rol === "director" ? "Director" : "Usuario"}
+                                            </p>
                   </div>
                   <div className="space-y-1 text-right">
                     <p className="text-sm text-muted-foreground">Último acceso:</p>

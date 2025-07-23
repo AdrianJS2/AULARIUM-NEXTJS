@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { School, Mail, Lock, Eye, EyeOff, AlertTriangle } from "lucide-react"
+import { User,School, Mail, Lock, Eye, EyeOff, AlertTriangle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { motion } from "framer-motion"
@@ -97,7 +97,7 @@ export default function Auth() {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-
+  const [nombre, setNombre] = useState("") 
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
@@ -133,37 +133,41 @@ export default function Auth() {
   }
 
   // Actualizar la función handleLogin para manejar mejor los errores
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-        // Llamamos a la función 'login' de nuestro hook, que a su vez llama a nuestra API.
-        const result = await login({ email, password });
-
-        if (!result.ok) {
-            // Si la API devuelve un error, lo mostramos.
-            throw new Error(result.error || "Credenciales inválidas o error del servidor.");
-        }
-        
-        toast({
-            title: "Inicio de sesión exitoso",
-            description: "Bienvenido de nuevo.",
-        });
-        // No necesitamos redirigir, el AuthProvider detectará el cambio de sesión
-        // y el componente Home se renderizará automáticamente.
-
-    } catch (err: any) {
-        console.error("Error during login:", err);
-        setError(err.message);
-    } finally {
-        setLoading(false);
+  const handleLogin = async () => {
+    const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || "Error de autenticación");
     }
+    // Si el login en API es exitoso, actualizamos el estado global
+    await login({ email, password });
+    toast({
+        title: "Inicio de sesión exitoso",
+        description: "Bienvenido de nuevo.",
+    });
 };
 
+const handleRegister = async () => {
+  const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, email, password }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+      throw new Error(data.error || "Error en el registro.");
+  }
+  // Mostramos el mensaje de "revisa tu correo"
+  setMessage(data.message);
+  toast({
+      title: "¡Casi listo!",
+      description: "Revisa tu correo para activar tu cuenta.",
+  });
+};
   // Actualizar la función handleSignUp para manejar mejor los errores
   // const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
   //   e.preventDefault()
@@ -198,17 +202,41 @@ export default function Auth() {
   //   }
   // }
 
-  // const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
-  //   e.preventDefault()
+  const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setMessage(null);
 
-  //   if (!validateForm()) return
+    // Validaciones básicas
+    if (!isLogin && !nombre.trim()) {
+        setError("Por favor, ingresa tu nombre");
+        setLoading(false);
+        return;
+    }
+    if (!email.trim() || !password.trim()) {
+        setError("Correo y contraseña son requeridos");
+        setLoading(false);
+        return;
+    }
+    if (password.length < 6) {
+        setError("La contraseña debe tener al menos 6 caracteres");
+        setLoading(false);
+        return;
+    }
 
-  //   if (isLogin) {
-  //     await handleLogin(e)
-  //   } else {
-  //     await handleSignUp(e)
-  //   }
-  // }
+    try {
+        if (isLogin) {
+            await handleLogin();
+        } else {
+            await handleRegister();
+        }
+    } catch (err: any) {
+        setError(err.message);
+    } finally {
+        setLoading(false);
+    }
+};
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword)
@@ -245,22 +273,38 @@ export default function Auth() {
               </Alert>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Correo electrónico</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="tu@ejemplo.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="pl-10 border-secondary/30"
-                  />
-                </div>
-              </div>
+
+
+
+
+           
+<form onSubmit={handleAuth} className="space-y-4">
+                            
+                            {/* ✅ CAMPO "NOMBRE" QUE APARECE SOLO EN REGISTRO */}
+                            {!isLogin && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="nombre">Nombre</Label>
+                                    <div className="relative">
+                                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            id="nombre" type="text" placeholder="Tu nombre completo"
+                                            value={nombre} onChange={(e) => setNombre(e.target.value)}
+                                            required={!isLogin} className="pl-10 border-secondary/30"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                             <div className="space-y-2">
+                                <Label htmlFor="email">Correo electrónico</Label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        id="email" type="email" placeholder="tu@ejemplo.com"
+                                        value={email} onChange={(e) => setEmail(e.target.value)}
+                                        required className="pl-10 border-secondary/30"
+                                    />
+                                </div>
+                            </div>
 
               <div className="space-y-2">
                 <Label htmlFor="password">Contraseña</Label>
@@ -300,7 +344,7 @@ export default function Auth() {
                 ) : isLogin ? (
                   "Iniciar Sesión"
                 ) : (
-                  "Regi"
+                  "Registrarse"
                 )
                 }
               </Button>

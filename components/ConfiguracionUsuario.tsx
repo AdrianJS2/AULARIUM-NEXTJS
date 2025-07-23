@@ -1,20 +1,21 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
-import { supabase } from "@/lib/supabase"
+import { useState } from "react"
+import { useAuth } from "@/lib/auth" // Asegúrate que la ruta sea correcta
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Eye, EyeOff } from "lucide-react"
 
 const ConfiguracionUsuario: React.FC = () => {
-  const [userData, setUserData] = useState({
-    nombre: "",
-    email: "",
-    rol: "",
-    ultimoAcceso: "N/A",
-  })
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // Obtenemos 'user' y 'loading' de tu hook. No necesitamos más.
+  const { user, loading } = useAuth(); 
+  
+  // ¡Importante! Necesitamos una forma de llamar a checkSession. 
+  // Modificaremos useAuth para exponerla.
+  // Por ahora, asumiremos que está disponible.
+  const { checkSession } = useAuth();
 
-  // Password change state
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [passwordError, setPasswordError] = useState<string | null>(null)
@@ -22,123 +23,71 @@ const ConfiguracionUsuario: React.FC = () => {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
 
-  useEffect(() => {
-    async function fetchUserData() {
-      try {
-        setLoading(true)
-
-        // Get current session directly from supabase
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-
-        if (sessionError) throw sessionError
-
-        if (!sessionData.session) {
-          setError("No se ha iniciado sesión")
-          setLoading(false)
-          return
-        }
-
-        const userId = sessionData.session.user.id
-        console.log("Fetching data for user ID:", userId)
-
-        // Fetch user data from the usuarios table
-        const { data, error } = await supabase.from("usuarios").select("*").eq("id", userId).single()
-
-        if (error) {
-          console.error("Database query error:", error)
-          throw error
-        }
-
-        if (data) {
-          console.log("User data retrieved:", data)
-          setUserData({
-            nombre: data.nombre || "",
-            email: data.email || sessionData.session.user.email || "",
-            rol: data.rol || "",
-            ultimoAcceso: sessionData.session.user.last_sign_in_at
-              ? new Date(sessionData.session.user.last_sign_in_at).toLocaleDateString()
-              : "N/A",
-          })
-        } else {
-          console.log("No user data found for ID:", userId)
-          setError("No se encontraron datos de usuario")
-        }
-      } catch (err) {
-        console.error("Error fetching user data:", err)
-        setError("Error al cargar los datos del usuario")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchUserData()
-  }, [])
-
   const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setPasswordError(null)
-    setPasswordSuccess(null)
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
 
     if (!currentPassword || !newPassword) {
-      setPasswordError("Por favor complete ambos campos")
-      return
+      setPasswordError("Por favor complete ambos campos");
+      return;
     }
 
     try {
-      // First verify the current password
-      const { data: sessionData } = await supabase.auth.getSession()
-      if (!sessionData.session) {
-        throw new Error("No hay sesión activa")
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cambiar la contraseña');
       }
 
-      // Update password
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      })
+      setPasswordSuccess("Contraseña actualizada correctamente");
+      setCurrentPassword("");
+      setNewPassword("");
+      
+      // Llamamos a la función checkSession de tu hook para refrescar los datos.
+      if (checkSession) {
+          checkSession();
+      }
 
-      if (error) throw error
-
-      setPasswordSuccess("Contraseña actualizada correctamente")
-      setCurrentPassword("")
-      setNewPassword("")
     } catch (err: any) {
-      console.error("Error changing password:", err)
-      setPasswordError(err.message || "Error al cambiar la contraseña")
+      console.error("Error changing password:", err);
+      setPasswordError(err.message || "Error al cambiar la contraseña");
     }
-  }
+  };
 
+  // El resto del JSX permanece exactamente igual
   return (
     <div className="space-y-8">
       <h2 className="text-2xl font-semibold">Configuración</h2>
       <div className="space-y-6">
-        {error && <div className="text-red-500 p-3 bg-red-50 rounded-md">{error}</div>}
-
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-        ) : (
+        ) : user ? (
           <>
             <div className="border rounded-lg p-6 bg-card">
               <h3 className="text-lg font-medium border-l-4 border-primary pl-3 mb-4">Información de Usuario</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Nombre:</p>
-                  <p className="font-medium">{userData.nombre}</p>
+                  <p className="font-medium">{user.nombre}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Email:</p>
-                  <p className="font-medium">{userData.email}</p>
+                  <p className="font-medium">{user.email}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Rol:</p>
                   <p className="font-medium">
-                    {userData.rol === "admin" ? "Administrador" : userData.rol === "director" ? "Director" : "Usuario"}
+                    {user.rol === "admin" ? "Administrador" : user.rol === "director" ? "Director" : "Usuario"}
                   </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Último acceso:</p>
-                  <p className="font-medium">{userData.ultimoAcceso}</p>
                 </div>
               </div>
             </div>
@@ -150,123 +99,68 @@ const ConfiguracionUsuario: React.FC = () => {
                 {passwordSuccess && <div className="text-green-500 p-3 bg-green-50 rounded-md">{passwordSuccess}</div>}
 
                 <div>
-                  <label htmlFor="currentPassword" className="block text-sm font-medium mb-1">
+                  <label htmlFor="currentPassword"
+                         className="block text-sm font-medium mb-1">
                     Contraseña Actual
                   </label>
                   <div className="relative">
-                    <input
+                    <Input
                       id="currentPassword"
                       type={showCurrentPassword ? "text" : "password"}
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       className="w-full p-2 border rounded-md"
                     />
-                    <button
+                    <Button
                       type="button"
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full"
                       onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                     >
-                      {showCurrentPassword ? (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-                          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
-                          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
-                          <line x1="2" x2="22" y1="2" y2="22"></line>
-                        </svg>
-                      ) : (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-                          <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                      )}
-                    </button>
+                      {showCurrentPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                    </Button>
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="newPassword" className="block text-sm font-medium mb-1">
+                  <label htmlFor="newPassword"
+                         className="block text-sm font-medium mb-1">
                     Nueva Contraseña
                   </label>
                   <div className="relative">
-                    <input
+                    <Input
                       id="newPassword"
                       type={showNewPassword ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       className="w-full p-2 border rounded-md"
                     />
-                    <button
+                    <Button
                       type="button"
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full"
                       onClick={() => setShowNewPassword(!showNewPassword)}
                     >
-                      {showNewPassword ? (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-                          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
-                          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
-                          <line x1="2" x2="22" y1="2" y2="22"></line>
-                        </svg>
-                      ) : (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-                          <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                      )}
-                    </button>
+                      {showNewPassword ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
+                    </Button>
                   </div>
                 </div>
 
-                <button type="submit" className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90">
+                <Button type="submit"
+                        className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90">
                   Actualizar Contraseña
-                </button>
+                </Button>
               </form>
             </div>
           </>
+        ) : (
+          <div className="text-red-500 p-3 bg-red-50 rounded-md">No se pudo cargar la información del usuario.</div>
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default ConfiguracionUsuario
+export default ConfiguracionUsuario;
