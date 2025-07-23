@@ -1,193 +1,113 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+// app/api/users/route.ts
+// Esta ruta maneja la creación (POST) y eliminación (DELETE) de usuarios.
+// La lógica de Supabase Auth se ha reemplazado por la inserción directa en la tabla 'usuarios'
+// y se ha añadido el hash de contraseñas con bcrypt.
 
-// Creamos un cliente de Supabase directamente
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { NextResponse } from "next/server";
+import pool from "@/lib/db";
+import bcrypt from "bcrypt";
+import { v4 as uuidv4 } from 'uuid'; // Para generar IDs únicos
+import { type NextRequest } from "next/server";
+import { isAdmin } from "@/lib/auth";
 
-export async function POST(request: Request) {
+const SALT_ROUNDS = 10; // Número de rondas de sal para el hash de bcrypt
+
+// --- MANEJADOR POST para crear un nuevo usuario ---
+export async function POST(request: NextRequest) {
+  const connection = await pool.getConnection();
   try {
-    // Añadir esta función al inicio de la función POST
-    // Verificar que el usuario que hace la solicitud es un administrador
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
-    }
-
-    const { data: userData, error: userError } = await supabase
-      .from("usuarios")
-      .select("rol")
-      .eq("id", session.user.id)
-      .single()
-
-    if (userError || !userData || userData.rol !== "admin") {
-      return NextResponse.json({ error: "No tiene permisos para realizar esta acción" }, { status: 403 })
-    }
-
-    const body = await request.json()
-    const { email, nombre, rol, password } = body
+    // NOTA: La verificación de permisos del solicitante se manejará con NextAuth.
+    // Por ahora, asumimos que quien llama a esta API tiene permisos.
+    
+    const { email, nombre, rol, password } = await request.json();
 
     if (!email || !nombre || !rol || !password) {
-      return NextResponse.json({ error: "Faltan campos obligatorios" }, { status: 400 })
+      return NextResponse.json({ error: "Faltan campos obligatorios" }, { status: 400 });
     }
 
-    // Verificar si el usuario ya existe en la tabla usuarios
-    const { data: existingUserRecord, error: checkError } = await supabase
-      .from("usuarios")
-      .select("id")
-      .eq("email", email)
-      .single()
+    // Verificar si el usuario ya existe
+    const [existingUsers]: [any[], any] = await connection.query(
+      "SELECT id FROM usuarios WHERE email = ?",
+      [email]
+    );
 
-    if (!checkError && existingUserRecord) {
+    if (existingUsers.length > 0) {
       return NextResponse.json(
-        {
-          error: "Ya existe un usuario con este correo electrónico en la base de datos",
-          code: "USER_ALREADY_REGISTERED",
-        },
-        { status: 400 },
-      )
+        { error: "Ya existe un usuario con este correo electrónico.", code: "USER_ALREADY_REGISTERED" },
+        { status: 409 } // 409 Conflict es más apropiado
+      );
     }
 
-    // Crear usuario en Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          nombre,
-          rol,
-        },
-      },
-    })
+    // Hashear la contraseña antes de guardarla
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+    
+    // Generar un ID único para el nuevo usuario
+    const userId = uuidv4();
 
-    if (authError) {
-      // Si el error es que el usuario ya está registrado, devolvemos un mensaje específico
-      if (authError.message.includes("already registered")) {
-        return NextResponse.json(
-          {
-            error: "Este correo electrónico ya está registrado en el sistema de autenticación",
-            code: "USER_ALREADY_REGISTERED",
-          },
-          { status: 400 },
-        )
-      }
-
-      console.error("Error creating auth user:", authError)
-      return NextResponse.json({ error: authError.message }, { status: 500 })
-    }
-
-    if (!authData.user) {
-      return NextResponse.json({ error: "No se pudo crear el usuario" }, { status: 500 })
-    }
-
-    const userId = authData.user.id
-
-    // Crear registro en tabla usuarios
-    const { error: insertError } = await supabase.from("usuarios").insert([
-      {
-        id: userId,
-        nombre,
-        rol,
-        email,
-      },
-    ])
-
-    if (insertError) {
-      console.error("Error creating user record:", insertError)
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
-    }
+    // Insertar el nuevo usuario en la base de datos
+    await connection.query(
+      "INSERT INTO usuarios (id, email, nombre, rol, password) VALUES (?, ?, ?, ?, ?)",
+      [userId, email, nombre, rol, hashedPassword]
+    );
 
     return NextResponse.json({
       success: true,
-      message: "Usuario creado correctamente. Se ha enviado un correo de confirmación.",
-    })
-  } catch (error) {
-    console.error("Error in user creation:", error)
-    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+      message: "Usuario creado correctamente.",
+      userId: userId
+    }, { status: 201 });
+
+  } catch (error: any) {
+    console.error("Error en la creación de usuario:", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }
 
-// Modificar la función DELETE para verificar que no se está eliminando a sí mismo
-export async function DELETE(request: Request) {
+// --- MANEJADOR DELETE para eliminar un usuario ---
+export async function DELETE(request: NextRequest) {
+  const connection = await pool.getConnection();
   try {
-    // Verificar que el usuario que hace la solicitud es un administrador
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    // NOTA: La autenticación y autorización se implementarán con NextAuth.
+    const mockAdminId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"; // Simular ID de un admin
+    
+    const { searchParams } = new URL(request.url);
+    const userIdToDelete = searchParams.get("id");
+
+    if (!userIdToDelete) {
+      return NextResponse.json({ error: "ID de usuario requerido" }, { status: 400 });
+    }
+    
+    // Verificar que el solicitante es un admin
+    const solicitanteEsAdmin = await isAdmin(mockAdminId);
+    if (!solicitanteEsAdmin) {
+        return NextResponse.json({ error: "No tiene permisos para realizar esta acción" }, { status: 403 });
     }
 
-    const currentUserId = session.user.id
-
-    const { data: userData, error: userError } = await supabase
-      .from("usuarios")
-      .select("rol")
-      .eq("id", currentUserId)
-      .maybeSingle()
-
-    if (userError || !userData || userData.rol !== "admin") {
-      return NextResponse.json({ error: "No tiene permisos para realizar esta acción" }, { status: 403 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get("id")
-
-    if (!userId) {
-      return NextResponse.json({ error: "ID de usuario requerido" }, { status: 400 })
-    }
-
-    // Verificar que no se está eliminando a sí mismo
-    if (userId === currentUserId) {
+    // Prevenir que un admin se elimine a sí mismo
+    if (userIdToDelete === mockAdminId) {
       return NextResponse.json(
-        {
-          error: "No puedes eliminar tu propia cuenta de usuario",
-          code: "SELF_DELETION_NOT_ALLOWED",
-        },
-        { status: 403 },
-      )
+        { error: "No puedes eliminar tu propia cuenta de usuario.", code: "SELF_DELETION_NOT_ALLOWED" },
+        { status: 403 }
+      );
     }
 
-    // 1. Eliminar de la tabla usuarios
-    const { error: dbError } = await supabase.from("usuarios").delete().eq("id", userId)
+    // Eliminar el usuario de la base de datos
+    const [result]: [any, any] = await connection.query(
+        "DELETE FROM usuarios WHERE id = ?",
+        [userIdToDelete]
+    );
 
-    if (dbError) {
-      console.error("Error deleting user record:", dbError)
-      return NextResponse.json({ error: dbError.message }, { status: 500 })
+    if (result.affectedRows === 0) {
+        return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
     }
 
-    // 2. Eliminar de auth.users usando la API de administración
-    // Necesitamos un token de servicio para esta operación
-    const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || "", {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    })
+    return NextResponse.json({ success: true, message: "Usuario eliminado correctamente." });
 
-    // Eliminar el usuario de auth.users
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId)
-
-    if (authError) {
-      console.error("Error deleting auth user:", authError)
-      return NextResponse.json({
-        success: true,
-        warning: true,
-        message:
-          "Usuario eliminado de la tabla, pero no se pudo eliminar completamente de la autenticación: " +
-          authError.message,
-      })
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Usuario eliminado completamente del sistema",
-    })
-  } catch (error) {
-    console.error("Error in user deletion:", error)
-    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+  } catch (error: any) {
+    console.error("Error en la eliminación de usuario:", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }

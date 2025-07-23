@@ -1,14 +1,15 @@
 "use client"
+import { featureFlags } from '@/lib/config';
 
 import { useState, useEffect, useCallback } from "react"
-import { supabase } from "@/lib/supabase"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DataTable } from "@/components/ui/data-table"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription  } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/use-toast"
 import {
   Pencil,
@@ -29,7 +30,8 @@ import {
 import type { ColumnDef } from "@tanstack/react-table"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { getUserRole } from "@/lib/auth"
+
+import { useAuth } from "@/lib/auth";
 
 interface Profesor {
   id: number
@@ -137,15 +139,18 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   const [conflictoHorario, setConflictoHorario] = useState<ConflictoHorario | null>(null)
   const [isDuplicadoModalOpen, setIsDuplicadoModalOpen] = useState(false)
   const [mensajeDuplicado, setMensajeDuplicado] = useState("")
-  const [userCarreraId, setUserCarreraId] = useState<number | null>(null)
-  const [userRole, setUserRole] = useState<string | null>(null)
+  
+
   const [carreraNombre, setCarreraNombre] = useState<string | null>(null)
-  const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
+ 
   const [loading, setLoading] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState("info")
   const [isValidatingHorario, setIsValidatingHorario] = useState(false)
   const [profesoresLoaded, setProfesoresLoaded] = useState(false)
+  const { user, loading: authLoading } = useAuth();
+  const useMySqlApi = featureFlags.materiasGrupos === 'mysql';
+  const [dataLoading, setDataLoading] = useState(true);
 
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
@@ -173,539 +178,346 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   }
 
   // Función para crear asignaciones automáticas
-  const crearAsignacionesAutomaticas = async (nuevoGrupo: any, materiaId: number) => {
-    if (!selectedPeriod) return
+  // const crearAsignacionesAutomaticas = async (nuevoGrupo: any, materiaId: number) => {
+  //   if (!selectedPeriod) return
 
-    const tables = getTableNamesByPeriod(selectedPeriod)
+  //   const tables = getTableNamesByPeriod(selectedPeriod)
 
-    try {
-      // Obtener aulas disponibles
-      const { data: aulas, error: aulasError } = await supabase.from("aulas").select("*")
+  //   try {
+  //     // Obtener aulas disponibles
+  //     const { data: aulas, error: aulasError } = await supabase.from("aulas").select("*")
 
-      if (aulasError) throw aulasError
+  //     if (aulasError) throw aulasError
 
-      // Obtener todas las asignaciones existentes
-      const { data: asignacionesExistentes, error: asignacionesError } = await supabase
-        .from(tables.asignaciones)
-        .select("*")
+  //     // Obtener todas las asignaciones existentes
+  //     const { data: asignacionesExistentes, error: asignacionesError } = await supabase
+  //       .from(tables.asignaciones)
+  //       .select("*")
 
-      if (asignacionesError) throw asignacionesError
+  //     if (asignacionesError) throw asignacionesError
 
-      // Crear asignaciones para cada horario del grupo
-      const nuevasAsignaciones = []
+  //     // Crear asignaciones para cada horario del grupo
+  //     const nuevasAsignaciones = []
 
-      for (const horario of nuevoGrupo.horarios) {
-        // Buscar un aula disponible para este horario
-        const aulaDisponible = aulas.find((aula) => {
-          // Verificar si el aula tiene capacidad suficiente
-          if (aula.capacidad < nuevoGrupo.alumnos) return false
+  //     for (const horario of nuevoGrupo.horarios) {
+  //       // Buscar un aula disponible para este horario
+  //       const aulaDisponible = aulas.find((aula) => {
+  //         // Verificar si el aula tiene capacidad suficiente
+  //         if (aula.capacidad < nuevoGrupo.alumnos) return false
 
-          // Verificar si el aula ya está ocupada en este horario
-          return !asignacionesExistentes.some(
-            (asignacion) =>
-              asignacion.aula_id === aula.id &&
-              asignacion.dia === horario.dia &&
-              asignacion.turno === nuevoGrupo.turno &&
-              ((asignacion.hora_inicio <= horario.hora_inicio && asignacion.hora_fin > horario.hora_inicio) ||
-                (asignacion.hora_inicio < horario.hora_fin && asignacion.hora_fin >= horario.hora_fin)),
-          )
-        })
+  //         // Verificar si el aula ya está ocupada en este horario
+  //         return !asignacionesExistentes.some(
+  //           (asignacion) =>
+  //             asignacion.aula_id === aula.id &&
+  //             asignacion.dia === horario.dia &&
+  //             asignacion.turno === nuevoGrupo.turno &&
+  //             ((asignacion.hora_inicio <= horario.hora_inicio && asignacion.hora_fin > horario.hora_inicio) ||
+  //               (asignacion.hora_inicio < horario.hora_fin && asignacion.hora_fin >= horario.hora_fin)),
+  //         )
+  //       })
 
-        // Crear la asignación (con o sin aula)
-        nuevasAsignaciones.push({
-          grupo_id: nuevoGrupo.id,
-          aula_id: aulaDisponible?.id || null,
-          materia_id: materiaId,
-          dia: horario.dia,
-          hora_inicio: horario.hora_inicio,
-          hora_fin: horario.hora_fin,
-          turno: nuevoGrupo.turno,
-          periodo_id: Number(selectedPeriod),
-          carrera_id: userCarreraId,
-        })
-      }
+  //       // Crear la asignación (con o sin aula)
+  //       nuevasAsignaciones.push({
+  //         grupo_id: nuevoGrupo.id,
+  //         aula_id: aulaDisponible?.id || null,
+  //         materia_id: materiaId,
+  //         dia: horario.dia,
+  //         hora_inicio: horario.hora_inicio,
+  //         hora_fin: horario.hora_fin,
+  //         turno: nuevoGrupo.turno,
+  //         periodo_id: Number(selectedPeriod),
+  //         carrera_id: userCarreraId,
+  //       })
+  //     }
 
-      // Insertar las nuevas asignaciones
-      if (nuevasAsignaciones.length > 0) {
-        const { error: insertError } = await supabase.from(tables.asignaciones).insert(nuevasAsignaciones)
+  //     // Insertar las nuevas asignaciones
+  //     if (nuevasAsignaciones.length > 0) {
+  //       const { error: insertError } = await supabase.from(tables.asignaciones).insert(nuevasAsignaciones)
 
-        if (insertError) throw insertError
+  //       if (insertError) throw insertError
 
-        console.log(`Creadas ${nuevasAsignaciones.length} asignaciones automáticas para el grupo ${nuevoGrupo.numero}`)
-      }
-    } catch (error) {
-      console.error("Error al crear asignaciones automáticas:", error)
-    }
-  }
+  //       console.log(`Creadas ${nuevasAsignaciones.length} asignaciones automáticas para el grupo ${nuevoGrupo.numero}`)
+  //     }
+  //   } catch (error) {
+  //     console.error("Error al crear asignaciones automáticas:", error)
+  //   }
+  // }
 
   // Función para cargar todos los profesores directamente
-  const loadAllProfesores = async () => {
-    try {
-      setLoading(true)
-      console.log("Cargando TODOS los profesores directamente...")
+//   const loadAllProfesores = async () => {
+//     try {
+//         setLoading(true);
+//         console.log("Cargando TODOS los profesores desde la API de MySQL...");
 
-      const { data, error } = await supabase.from("profesores").select("*").order("nombre", { ascending: true })
+//         // Usamos fetch para llamar a nuestra API en lugar de Supabase.
+//         const response = await fetch('/api/profesores');
+//         if (!response.ok) {
+//             const errorData = await response.json();
+//             throw new Error(errorData.error || 'Error al cargar profesores desde la API');
+//         }
+        
+//         const data = await response.json();
 
-      if (error) {
-        console.error("Error cargando profesores:", error)
-        throw error
-      }
-
-      console.log(`Profesores cargados: ${data?.length || 0}`)
-      setProfesores(data || [])
-      setProfesoresLoaded(true)
-    } catch (error) {
-      console.error("Error en loadAllProfesores:", error)
-      setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)))
-    } finally {
-      setLoading(false)
-    }
-  }
+//         console.log(`Profesores cargados: ${data?.length || 0}`);
+//         setProfesores(data || []);
+//         setProfesoresLoaded(true);
+//     } catch (error) {
+//         console.error("Error en loadAllProfesores:", error);
+//         setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)));
+//     } finally {
+//         setLoading(false);
+//     }
+// };
 
   // Función para cargar profesores independientemente de las materias
-  const fetchProfesores = useCallback(async () => {
-    try {
-      setLoading(true)
-      console.log("Cargando profesores... userRole:", userRole, "isUserAdmin:", isUserAdmin)
+//   const fetchProfesores = useCallback(async () => {
+//     // Si no tenemos la información necesaria, no hacemos nada.
+//     if (!currentUserId) return;
 
-      // Si el usuario es administrador, obtener TODOS los profesores
-      if (userRole === "admin") {
-        console.log("Cargando todos los profesores (modo admin)")
-        await loadAllProfesores()
-        return
-      } else if (currentUserId) {
-        console.log("Cargando profesores para usuario normal/director")
-        // Para directores u otros usuarios, obtener solo los profesores creados por ellos
-        const { data: ownedProfesors, error: ownedError } = await supabase
-          .from("profesores")
-          .select("*")
-          .eq("usuario_id", currentUserId)
+//     setLoading(true);
+//     console.log(`Cargando profesores desde la API con rol: ${userRole}`);
 
-        if (ownedError) throw ownedError
+//     try {
+//         // Hacemos una única llamada a nuestra API inteligente, pasándole el rol y el ID del usuario.
+//         const response = await fetch(`/api/profesores?userId=${currentUserId}&userRole=${userRole}`);
 
-        // Intentar obtener profesores asociados
-        let associatedProfesors: Profesor[] = []
-        try {
-          // Verificar si la tabla profesor_usuario existe
-          const { data: tableInfo, error: tableError } = await supabase
-            .from("information_schema.tables")
-            .select("table_name")
-            .eq("table_name", "profesor_usuario")
-            .eq("table_schema", "public")
+//         if (!response.ok) {
+//             const errorData = await response.json();
+//             throw new Error(errorData.error || 'No se pudieron cargar los profesores desde la API.');
+//         }
 
-          if (!tableError && tableInfo && tableInfo.length > 0) {
-            // Obtener profesores asociados a través de la tabla profesor_usuario
-            const { data: associatedProfesorIds, error: associatedError } = await supabase
-              .from("profesor_usuario")
-              .select("profesor_id")
-              .eq("usuario_id", currentUserId)
-
-            if (!associatedError && associatedProfesorIds && associatedProfesorIds.length > 0) {
-              // Si hay profesores asociados, obtener sus detalles
-              const ids = associatedProfesorIds.map((item) => item.profesor_id)
-              const { data: profesorsData, error: profesorsError } = await supabase
-                .from("profesores")
-                .select("*")
-                .in("id", ids)
-
-              if (!profesorsError) {
-                associatedProfesors = profesorsData || []
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Error en el proceso de obtención de profesores asociados:", error)
-        }
-
-        // Combinar ambos conjuntos de profesores y ordenar por nombre
-        const allProfesors = [...(ownedProfesors || []), ...associatedProfesors]
-        const uniqueProfesors = Array.from(new Map(allProfesors.map((item) => [item.id, item])).values())
-        setProfesores(uniqueProfesors.sort((a, b) => a.nombre.localeCompare(b.nombre)))
-      }
-
-      setProfesoresLoaded(true)
-    } catch (error) {
-      console.error("Error fetching profesores:", error)
-      setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)))
-    } finally {
-      setLoading(false)
-    }
-  }, [userRole, isUserAdmin, currentUserId])
+//         const data = await response.json();
+        
+//         setProfesores(data || []);
+//         setProfesoresLoaded(true);
+//     } catch (error) {
+//         console.error("Error fetching profesores:", error);
+//         setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)));
+//     } finally {
+//         setLoading(false);
+//     }
+// }, [currentUserId, userRole]); // Las dependencias ahora son más limpias.
 
   // Modify the fetchData function to properly filter materials based on user role
   const fetchData = useCallback(async () => {
-    try {
-      // Mostrar estado de carga antes de hacer cualquier consulta
-      setLoading(true)
-
-      if (!selectedPeriod) {
-        setError("Debe seleccionar un periodo académico")
-        setLoading(false)
-        return
-      }
-
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      // Esperar a que tengamos la información del usuario antes de hacer consultas
-      if (currentUserId === null) {
-        return
-      }
-
-      // Cargar profesores independientemente de las materias
-      if (!profesoresLoaded) {
-        if (userRole === "admin") {
-          await loadAllProfesores()
-        } else {
-          await fetchProfesores()
-        }
-      }
-
-      // Preparar la consulta de materias
-      let materiasQuery = supabase.from(tables.materias).select("*")
-
-      // IMPORTANTE: Si el usuario es admin, NO aplicar filtros - debe ver todas las materias
-      if (userRole !== "admin" && !isUserAdmin) {
-        // Si el usuario no es admin, filtrar por usuario_id
-        if (currentUserId) {
-          materiasQuery = materiasQuery.eq("usuario_id", currentUserId)
-        }
-
-        // Si el usuario es coordinador, filtrar por carrera
-        if (userRole === "coordinador" && userCarreraId) {
-          materiasQuery = materiasQuery.eq("carrera_id", userCarreraId)
-        }
-      }
-
-      console.log("Ejecutando consulta de materias como:", userRole, "Admin:", isUserAdmin)
-
-      // Ejecutar la consulta de materias primero
-      const { data: materiasData, error: materiasError } = await materiasQuery
-
-      if (materiasError) {
-        console.error("Error al cargar materias:", materiasError)
-        setError("Error al cargar materias")
-        setLoading(false)
-        return
-      }
-
-      console.log(`Materias cargadas: ${materiasData?.length || 0}`)
-
-      // Si no hay materias, establecer estados vacíos y terminar
-      if (!materiasData || materiasData.length === 0) {
-        setMaterias([])
-        setGrupos([])
-        setPeriodos([])
-        setLoading(false)
-        return
-      }
-
-      // Obtener IDs de materias para filtrar grupos
-      const materiaIds = materiasData.map((m) => m.id)
-
-      // Consulta de grupos filtrada por materias del usuario
-      const gruposQuery = supabase.from(tables.grupos).select("*").in("materia_id", materiaIds)
-      const periodosQuery = supabase.from("periodos").select("*")
-
-      // Ejecutar las consultas restantes en paralelo
-      const [gruposData, periodosData] = await Promise.all([gruposQuery, periodosQuery])
-
-      setMaterias(materiasData || [])
-
-      if (gruposData.error) {
-        console.error("Error al cargar grupos:", gruposData.error)
-        setError("Error al cargar grupos")
-      } else {
-        const parsedGrupos =
-          gruposData.data?.map((grupo) => ({
-            ...grupo,
-            horarios: Array.isArray(grupo.horarios) ? grupo.horarios : JSON.parse(grupo.horarios || "[]"),
-          })) || []
-        setGrupos(parsedGrupos)
-        console.log(`Grupos cargados: ${parsedGrupos.length}`)
-      }
-
-      if (periodosData.error) {
-        console.error("Error al cargar periodos:", periodosData.error)
-        setError("Error al cargar periodos")
-      } else {
-        setPeriodos(periodosData.data || [])
-      }
-    } catch (error) {
-      console.error("Error fetching data:", error)
-      setError("Error al cargar los datos")
-    } finally {
-      setLoading(false)
+    if (authLoading || !user || !selectedPeriod) {
+      return;
     }
-  }, [selectedPeriod, userRole, userCarreraId, isUserAdmin, currentUserId, profesoresLoaded, fetchProfesores])
+    setDataLoading(true);
+    setError(null);
+    try {
+      if (useMySqlApi) {
+        const [materiasGruposRes, profesoresRes] = await Promise.all([
+          fetch(`/api/materias-grupos?periodoId=${selectedPeriod}`),
+          fetch('/api/profesores')
+        ]);
+        if (!materiasGruposRes.ok) throw new Error((await materiasGruposRes.json()).error || 'Error al cargar datos.');
+        if (!profesoresRes.ok) throw new Error((await profesoresRes.json()).error || 'Error al cargar profesores.');
+        
+        const materiasGruposData = await materiasGruposRes.json();
+        const profesoresData = await profesoresRes.json();
+        
+        setMaterias(materiasGruposData.materias || []);
+        setGrupos((materiasGruposData.grupos || []).map((g: any) => ({ ...g, horarios: Array.isArray(g.horarios) ? g.horarios : JSON.parse(g.horarios || "[]") })));
+        setProfesores(profesoresData || []);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [selectedPeriod, user, authLoading, useMySqlApi]);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+        fetchData();
+    }
+  }, [authLoading, user, fetchData]);
+
+  // ✅ PASO 3: Simplificar el useEffect para que dependa del estado de carga de la autenticación
+  useEffect(() => {
+    if (!authLoading && user) {
+        fetchData();
+    }
+  }, [authLoading, user, fetchData]); 
 
   // Función para verificar si el usuario es administrador directamente desde la API
-  const checkAdminStatus = async (userId: string) => {
-    try {
-      const response = await fetch(`/api/check-admin?userId=${userId}`)
-      const data = await response.json()
-      console.log("Respuesta de check-admin API:", data)
-      return data.isAdmin === true
-    } catch (error) {
-      console.error("Error verificando estado de admin:", error)
-      return false
-    }
-  }
+  // const checkAdminStatus = async (userId: string) => {
+  //   try {
+  //     const response = await fetch(`/api/check-admin?userId=${userId}`)
+  //     const data = await response.json()
+  //     console.log("Respuesta de check-admin API:", data)
+  //     return data.isAdmin === true
+  //   } catch (error) {
+  //     console.error("Error verificando estado de admin:", error)
+  //     return false
+  //   }
+  // }
 
-  useEffect(() => {
-    async function fetchUserData() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+  // useEffect(() => {
+  //   async function fetchUserData() {
+  //     try {
+  //       const {
+  //         data: { user },
+  //       } = await supabase.auth.getUser()
 
-        if (user) {
-          setCurrentUserId(user.id)
+  //       if (user) {
+  //         setCurrentUserId(user.id)
 
-          // Verificar si es admin directamente desde la API
-          const adminStatus = await checkAdminStatus(user.id)
-          console.log("Estado de admin desde API:", adminStatus)
-          setIsUserAdmin(adminStatus)
+  //         // Verificar si es admin directamente desde la API
+  //         const adminStatus = await checkAdminStatus(user.id)
+  //         console.log("Estado de admin desde API:", adminStatus)
+  //         setIsUserAdmin(adminStatus)
 
-          // También obtener el rol para otros usos
-          const { rol, carrera_id, carrera_nombre } = await getUserRole(user.id)
-          setUserRole(rol)
-          setUserCarreraId(carrera_id)
-          setCarreraNombre(carrera_nombre)
+  //         // También obtener el rol para otros usos
+  //         const { rol, carrera_id, carrera_nombre } = await getUserRole(user.id)
+  //         setUserRole(rol)
+  //         setUserCarreraId(carrera_id)
+  //         setCarreraNombre(carrera_nombre)
 
-          // Si es admin, cargar todos los profesores inmediatamente
-          if (adminStatus) {
-            console.log("Usuario es admin, cargando todos los profesores...")
-            await loadAllProfesores()
-          }
-        }
-      } catch (error) {
-        console.error("Error obteniendo datos del usuario:", error)
-      }
-    }
+  //         // Si es admin, cargar todos los profesores inmediatamente
+  //         if (adminStatus) {
+  //           console.log("Usuario es admin, cargando todos los profesores...")
+  //           await loadAllProfesores()
+  //         }
+  //       }
+  //     } catch (error) {
+  //       console.error("Error obteniendo datos del usuario:", error)
+  //     }
+  //   }
 
-    fetchUserData()
-  }, [])
+  //   fetchUserData()
+  // }, [])
 
   // Cargar profesores inmediatamente después de obtener el rol del usuario
-  useEffect(() => {
-    if (currentUserId !== null && userRole !== null && !profesoresLoaded) {
-      console.log("Cargando profesores después de obtener el rol del usuario")
-      if (userRole === "admin" || isUserAdmin) {
-        loadAllProfesores()
-      } else {
-        fetchProfesores()
-      }
-    }
-  }, [currentUserId, userRole, profesoresLoaded, fetchProfesores, isUserAdmin])
+  // useEffect(() => {
+  //   if (currentUserId !== null && userRole !== null && !profesoresLoaded) {
+  //     console.log("Cargando profesores después de obtener el rol del usuario")
+  //     if (userRole === "admin" || isUserAdmin) {
+  //       loadAllProfesores()
+  //     } else {
+  //       fetchProfesores()
+  //     }
+  //   }
+  // }, [currentUserId, userRole, profesoresLoaded, fetchProfesores, isUserAdmin])
 
-  useEffect(() => {
-    if (selectedPeriod && currentUserId !== null) {
-      fetchData()
-    }
-  }, [fetchData, selectedPeriod, currentUserId])
+  // useEffect(() => {
+  //   if (selectedPeriod && currentUserId !== null) {
+  //     fetchData()
+  //   }
+  // }, [fetchData, selectedPeriod, currentUserId])
 
   async function addMateria() {
-    if (!selectedPeriod) {
+    if (!nombreMateria.trim() || !profesorId) {
+        toast({ title: "Error", description: "Todos los campos son requeridos.", variant: "destructive" });
+        return;
+    }
+
+    // ✅ 6. LA VALIDACIÓN CLAVE, AHORA MÁS FIABLE QUE NUNCA
+    // Esta comprobación se hace sobre el objeto `user` del contexto, que es la única fuente de verdad.
+    if (!user) {
       toast({
-        title: "Error",
-        description: "Debe seleccionar un periodo académico",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!nombreMateria.trim()) {
+          title: "Error de Sesión",
+          description: "Tu sesión ha expirado. Por favor, vuelve a iniciar sesión.",
+          variant: "destructive"
+      });
+      return;
+  }
+  
+  if (!user.carrera_id) {
       toast({
-        title: "Error",
-        description: "El nombre de la materia es requerido",
-        variant: "destructive",
-      })
-      return
-    }
+          title: "Acción no permitida",
+          description: "Tu usuario no tiene una carrera asignada. Contacta a un administrador.",
+          variant: "destructive"
+      });
+      return;
+  }
 
-    if (!userCarreraId && userRole === "coordinador") {
-      toast({
-        title: "Error",
-        description: "No tiene una carrera asignada. Contacte al administrador.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (!currentUserId) {
-      toast({
-        title: "Error",
-        description: "No se pudo identificar al usuario actual",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const tables = getTableNamesByPeriod(selectedPeriod)
-
-    // Verificar si ya existe una materia con el mismo nombre y profesor
-    if (profesorId !== "pendiente") {
-      const { data: existingMaterias, error: checkError } = await supabase
-        .from(tables.materias)
-        .select("*")
-        .ilike("nombre", nombreMateria)
-        .eq("profesor_id", profesorId === "pendiente" ? null : Number.parseInt(profesorId!))
-
-      if (checkError) {
-        console.error("Error checking existing materias:", checkError)
-        setError("Error al verificar materias existentes")
-        return
-      }
-
-      if (existingMaterias && existingMaterias.length > 0) {
-        const profesor = profesores.find((p) => p.id === Number.parseInt(profesorId!))
-        setMensajeDuplicado(
-          `Ya existe una materia con el nombre "${nombreMateria}" asignada al profesor "${profesor?.nombre}".`,
-        )
-        setIsDuplicadoModalOpen(true)
-        return
-      }
-    }
-
-    const { data, error } = await supabase.from(tables.materias).insert([
-      {
+    setLoading(true);
+    const materiaData = {
         nombre: nombreMateria,
-        profesor_id: profesorId === "pendiente" ? null : Number.parseInt(profesorId!),
-        carrera_id: userCarreraId, // Añadir carrera_id
-        usuario_id: currentUserId, // Añadir usuario_id
-      },
-    ])
+        profesor_id: profesorId === "pendiente" ? null : parseInt(profesorId),
+        carrera_id: user.carrera_id, // Usamos la carrera del usuario del hook.
+        usuario_id: user.id          // Usamos el ID del usuario del hook.
+    };
 
-    if (error) {
-      console.error("Error adding materia:", error)
-      setError("Error al agregar la materia")
-    } else {
-      fetchData()
-      setNombreMateria("")
-      setProfesorId(null)
-      toast({
-        title: "Éxito",
-        description: "Materia agregada correctamente.",
-      })
+    try {
+        if (useMySqlApi) {
+            const response = await fetch('/api/materias-grupos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'materia', payload: materiaData, periodoId: selectedPeriod }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Error al crear la materia vía API');
+            }
+        } 
+
+        await fetchData();
+        setNombreMateria("");
+        setProfesorId(null);
+        toast({ title: "Éxito", description: "Materia creada correctamente." });
+    } catch (err) {
+        setError((err as Error).message);
+        toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
+    } finally {
+        setLoading(false);
     }
+}
+async function updateMateria() {
+  if (!editingMateria) return;
+  if (!nombreMateria.trim()) {
+      toast({ title: "Error", description: "El nombre de la materia es requerido.", variant: "destructive" });
+      return;
   }
-
-  async function updateMateria() {
-    if (!editingMateria || !selectedPeriod) return
-
-    if (!nombreMateria.trim()) {
-      toast({
-        title: "Error",
-        description: "El nombre de la materia es requerido",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const tables = getTableNamesByPeriod(selectedPeriod)
-
-    // Verificar si ya existe otra materia con el mismo nombre y profesor
-    if (profesorId !== "pendiente") {
-      const { data: existingMaterias, error: checkError } = await supabase
-        .from(tables.materias)
-        .select("*")
-        .ilike("nombre", nombreMateria)
-        .eq("profesor_id", profesorId === "pendiente" ? null : Number.parseInt(profesorId!))
-        .neq("id", editingMateria.id) // Excluir la materia actual
-
-      if (checkError) {
-        console.error("Error checking existing materias:", checkError)
-        setError("Error al verificar materias existentes")
-        return
+  
+  setLoading(true);
+  const updatedMateriaData = {
+      id: editingMateria.id,
+      nombre: nombreMateria,
+      profesor_id: profesorId === "pendiente" ? null : Number.parseInt(profesorId!),
+  };
+  
+  try {
+      // HE AQUÍ LA CORRECCIÓN: Se añade el if/else para usar la API o Supabase.
+      if (useMySqlApi) {
+          const response = await fetch('/api/materias-grupos', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'materia', payload: updatedMateriaData, periodoId: selectedPeriod }),
+          });
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Error al actualizar la materia vía API.');
+          }
+      } else {
+          const { error } = await supabase
+              .from(getTableNamesByPeriod(selectedPeriod).materias)
+              .update({ nombre: updatedMateriaData.nombre, profesor_id: updatedMateriaData.profesor_id })
+              .eq("id", updatedMateriaData.id);
+          if (error) throw error;
       }
 
-      if (existingMaterias && existingMaterias.length > 0) {
-        const profesor = profesores.find((p) => p.id === Number.parseInt(profesorId!))
-        setMensajeDuplicado(
-          `Ya existe otra materia con el nombre "${nombreMateria}" asignada al profesor "${profesor?.nombre}".`,
-        )
-        setIsDuplicadoModalOpen(true)
-        return
-      }
-    }
+      await fetchData();
+      setIsEditMateriaModalOpen(false);
+      toast({ title: "Éxito", description: "Materia actualizada." });
 
-    const { data, error } = await supabase
-      .from(tables.materias)
-      .update({ nombre: nombreMateria, profesor_id: profesorId === "pendiente" ? null : Number.parseInt(profesorId!) })
-      .eq("id", editingMateria.id)
-
-    if (error) {
-      console.error("Error updating materia:", error)
-      setError("Error al actualizar la materia")
-    } else {
-      fetchData()
-      setEditingMateria(null)
-      setNombreMateria("")
-      setProfesorId(null)
-      setIsEditMateriaModalOpen(false)
-      toast({
-        title: "Éxito",
-        description: "Materia actualizada correctamente.",
-      })
-    }
+  } catch (err) {
+      setError((err as Error).message);
+      toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
+  } finally {
+      setLoading(false);
   }
+}
+
 
   const confirmDeleteMateria = (id: number) => {
     setMateriaToDelete(id)
     setIsDeleteMateriaModalOpen(true)
   }
 
-  async function executeDeleteMateria() {
-    if (!materiaToDelete || !selectedPeriod) return
-
-    const tables = getTableNamesByPeriod(selectedPeriod)
-
-    try {
-      // First, get all grupos associated with this materia
-      const { data: gruposData, error: gruposQueryError } = await supabase
-        .from(tables.grupos)
-        .select("id")
-        .eq("materia_id", materiaToDelete)
-
-      if (gruposQueryError) throw gruposQueryError
-
-      // If there are grupos, delete their asignaciones first
-      if (gruposData && gruposData.length > 0) {
-        const grupoIds = gruposData.map((g) => g.id)
-
-        // Delete asignaciones for these grupos
-        const { error: asignacionesError } = await supabase.from(tables.asignaciones).delete().in("grupo_id", grupoIds)
-
-        if (asignacionesError) throw asignacionesError
-      }
-
-      // Then, delete all grupos associated with this materia
-      const { error: gruposError } = await supabase.from(tables.grupos).delete().eq("materia_id", materiaToDelete)
-
-      if (gruposError) throw gruposError
-
-      // Finally, delete the materia
-      const { error: materiaError } = await supabase.from(tables.materias).delete().eq("id", materiaToDelete)
-
-      if (materiaError) throw materiaError
-
-      fetchData()
-      setIsDeleteMateriaModalOpen(false)
-      setMateriaToDelete(null)
-      toast({
-        title: "Éxito",
-        description: "Materia y sus grupos asociados eliminados correctamente.",
-      })
-    } catch (error) {
-      console.error("Error deleting materia:", error)
-      setError("Error al eliminar la materia y sus grupos asociados")
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar la materia. Asegúrese de que no tenga asignaciones asociadas.",
-        variant: "destructive",
-      })
-    }
-  }
 
   const handleEditMateria = (materia: Materia) => {
     setEditingMateria(materia)
@@ -758,6 +570,7 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
         }
       }
     }
+    
 
     if (conflictosMateria.length > 0) {
       return {
@@ -811,68 +624,78 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
         }
       }
 
-      // Verificar disponibilidad del profesor para todo el rango de horas
       try {
-        // Obtener la disponibilidad del profesor
-        const { data: profesorData, error: profesorError } = await supabase
-          .from("profesores")
-          .select("disponibilidad")
-          .eq("id", profesorSeleccionado)
-          .single()
+        
+        const response = await fetch(`/api/profesores/disponibilidad?id=${profesorSeleccionado}`);
 
-        if (profesorError) throw profesorError
-
-        // Si el profesor tiene configurada su disponibilidad
-        if (profesorData && profesorData.disponibilidad) {
-          const disponibilidad = profesorData.disponibilidad
-          const dia = nuevoHorario.dia
-
-          // Verificar si existe la disponibilidad para este día
-          if (!disponibilidad[dia]) {
-            const profesor = profesores.find((p) => p.id === profesorSeleccionado)
-            return {
-              tipo: "disponibilidad",
-              mensaje: `El profesor "${profesor?.nombre}" no tiene configurada la disponibilidad para ${dia}.`,
-              detalles: [`No hay configuración de disponibilidad para ${dia}.`],
+        if (!response.ok) {
+            if (response.status === 404) {
+                // Si la API dice que no encuentra al profesor, lo manejamos.
+                throw new Error(`El profesor con ID ${profesorSeleccionado} no fue encontrado en la base de datos de MySQL.`);
             }
-          }
-
-          // CORRECCIÓN: Verificar cada hora en el rango del horario
-          // Convertir las horas de inicio y fin a números para facilitar la comparación
-          const horaInicio = Number.parseInt(nuevoHorario.hora_inicio.split(":")[0])
-          const horaFin = Number.parseInt(nuevoHorario.hora_fin.split(":")[0])
-
-          const horasNoDisponibles = []
-
-          // Verificar cada hora en el rango
-          for (let hora = horaInicio; hora < horaFin; hora++) {
-            const horaFormateada = `${hora.toString().padStart(2, "0")}:00`
-
-            // Verificar si esta hora específica está disponible
-            if (disponibilidad[dia][horaFormateada] !== true) {
-              horasNoDisponibles.push(horaFormateada)
-            }
-          }
-
-          if (horasNoDisponibles.length > 0) {
-            const profesor = profesores.find((p) => p.id === profesorSeleccionado)
-            return {
-              tipo: "disponibilidad",
-              mensaje: `El profesor "${profesor?.nombre}" no está disponible en todas las horas requeridas.`,
-              detalles: [
-                `El horario requiere disponibilidad de ${nuevoHorario.hora_inicio} a ${nuevoHorario.hora_fin}`,
-                `Horas no disponibles: ${horasNoDisponibles.join(", ")}`,
-              ],
-            }
-          }
+            // Cualquier otro error de la API.
+            throw new Error('No se pudo obtener la disponibilidad del profesor desde la API.');
         }
-      } catch (error) {
-        console.error("Error al verificar disponibilidad del profesor:", error)
-      }
-    }
+        
+        const profesorData = await response.json();
 
-    return null
-  }
+        if (profesorData && profesorData.disponibilidad) {
+            const disponibilidad = profesorData.disponibilidad;
+            const dia = nuevoHorario.dia;
+
+            if (!disponibilidad[dia]) {
+                const profesor = profesores.find((p) => p.id === profesorSeleccionado);
+                return {
+                    tipo: "disponibilidad",
+                    mensaje: `El profesor "${profesor?.nombre}" no tiene configurada la disponibilidad para ${dia}.`,
+                    detalles: [`No hay configuración de disponibilidad para ${dia}.`],
+                };
+            }
+
+            const horaInicio = Number.parseInt(nuevoHorario.hora_inicio.split(":")[0]);
+            const horaFin = Number.parseInt(nuevoHorario.hora_fin.split(":")[0]);
+            const horasNoDisponibles = [];
+
+            for (let hora = horaInicio; hora < horaFin; hora++) {
+                const horaFormateada = `${hora.toString().padStart(2, "0")}:00`;
+                if (disponibilidad[dia][horaFormateada] !== true) {
+                    horasNoDisponibles.push(horaFormateada);
+                }
+            }
+
+            if (horasNoDisponibles.length > 0) {
+                const profesor = profesores.find((p) => p.id === profesorSeleccionado);
+                return {
+                    tipo: "disponibilidad",
+                    mensaje: `El profesor "${profesor?.nombre}" no está disponible en todas las horas requeridas.`,
+                    detalles: [
+                        `El horario requiere disponibilidad de ${nuevoHorario.hora_inicio} a ${nuevoHorario.hora_fin}`,
+                        `Horas no disponibles: ${horasNoDisponibles.join(", ")}`,
+                    ],
+                };
+            }
+        }
+    } 
+      // Verificar disponibilidad del profesor para todo el rango de horas
+      catch (error) {
+        // Ahora el error que se muestra en consola será mucho más claro.
+        console.error("Error al verificar disponibilidad del profesor:", error);
+        toast({
+            title: "Error de Disponibilidad",
+            description: (error as Error).message,
+            variant: "destructive"
+        });
+        // Es buena idea devolver un conflicto para que la operación se detenga.
+        return {
+            tipo: 'disponibilidad',
+            mensaje: 'No se pudo verificar la disponibilidad del profesor.',
+            detalles: [(error as Error).message]
+        }
+    }
+}
+
+return null;
+};
 
   // Verificar si un horario está duplicado
   const verificarHorarioDuplicado = (nuevoHorario: Horario): ConflictoHorario | null => {
@@ -996,209 +819,233 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   const handleRemoveHorario = (index: number) => {
     setHorarios(horarios.filter((_, i) => i !== index))
   }
+  //Añadir grupo
 
   async function addGrupo() {
-    if (
-      !selectedMateriaId ||
-      !selectedPeriod ||
-      !grupoNumero ||
-      !grupoAlumnos ||
-      !grupoTurno ||
-      horarios.length === 0
-    ) {
-      toast({
-        title: "Error",
-        description: "Por favor complete todos los campos y agregue al menos un horario",
-        variant: "destructive",
-      })
-      return
+    // 1. La validación de campos se mantiene igual.
+    if (!selectedMateriaId || !selectedPeriod || !grupoNumero || !grupoAlumnos || !grupoTurno || horarios.length === 0) {
+        toast({
+            title: "Error",
+            description: "Por favor complete todos los campos y agregue al menos un horario",
+            variant: "destructive",
+        });
+        return;
     }
 
+    setLoading(true);
+    setError(null);
+
     try {
-      // Verificar conflictos para todos los horarios
-      for (const horario of horarios) {
-        const conflicto = await verificarConflictos(horario)
-        if (conflicto) {
-          setConflictoHorario(conflicto)
-          setIsConflictoModalOpen(true)
-          return
+        // 2. La verificación de conflictos en el frontend se mantiene para dar feedback rápido.
+        for (const horario of horarios) {
+            const conflicto = await verificarConflictos(horario);
+            if (conflicto) {
+                setConflictoHorario(conflicto);
+                setIsConflictoModalOpen(true);
+                setLoading(false); // Detener la carga si hay conflicto
+                return;
+            }
         }
-      }
 
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      const { data, error } = await supabase.from(tables.grupos).insert([
-        {
-          materia_id: selectedMateriaId,
-          numero: grupoNumero,
-          alumnos: Number.parseInt(grupoAlumnos),
-          turno: grupoTurno,
-          horarios: horarios,
-        },
-      ])
-
-      if (error) {
-        console.error("Error adding grupo:", error)
-        setError("Error al agregar el grupo")
-      } else {
-        // Crear asignaciones automáticas para el nuevo grupo
-        if (data && data.length > 0) {
-          const nuevoGrupo = {
-            id: data[0].id,
+        // 3. Preparamos el payload (los datos a enviar).
+        const grupoData = {
+            materia_id: selectedMateriaId,
             numero: grupoNumero,
             alumnos: Number.parseInt(grupoAlumnos),
             turno: grupoTurno,
             horarios: horarios,
-          }
-          await crearAsignacionesAutomaticas(nuevoGrupo, selectedMateriaId)
+        };
+
+        // 4. HE AQUÍ EL CAMBIO: Usamos la API si el flag está activo.
+        if (useMySqlApi) {
+            const response = await fetch('/api/materias-grupos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'grupo', payload: grupoData, periodoId: selectedPeriod }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Error al agregar el grupo vía API.');
+            }
+        } else {
+            // Lógica de Supabase como fallback.
+            // NOTA: La función crearAsignacionesAutomaticas ya no se llama aquí.
+            const tables = getTableNamesByPeriod(selectedPeriod);
+            const { error } = await supabase.from(tables.grupos).insert([grupoData]);
+            if (error) throw error;
         }
 
-        fetchData()
-        setGrupoNumero("")
-        setGrupoAlumnos("")
-        setGrupoTurno("MAÑANA")
-        setHorasClase("")
-        setHorarios([])
-        setSelectedMateriaId(null)
+        // 5. Lógica de éxito: se recargan los datos y se limpia el formulario.
+        await fetchData();
+        setGrupoNumero("");
+        setGrupoAlumnos("");
+        setGrupoTurno("MAÑANA");
+        setHorasClase("");
+        setHorarios([]);
+        setSelectedMateriaId(null);
         toast({
-          title: "Éxito",
-          description: "Grupo agregado correctamente.",
-        })
-      }
+            title: "Éxito",
+            description: "Grupo y sus horarios base han sido agregados correctamente.",
+        });
+
     } catch (error) {
-      console.error("Error al agregar grupo:", error)
-      toast({
-        title: "Error",
-        description: "Ocurrió un error al agregar el grupo",
-        variant: "destructive",
-      })
+        console.error("Error al agregar grupo:", error);
+        toast({
+            title: "Error",
+            description: "Ocurrió un error al agregar el grupo: " + (error as Error).message,
+            variant: "destructive",
+        });
+    } finally {
+        setLoading(false);
     }
-  }
-
-  async function updateGrupo() {
-    if (!editingGrupo || !selectedPeriod) return
-
-    // Verificar que todos los campos estén completos
-    if (!grupoNumero || !grupoAlumnos || !grupoTurno || horarios.length === 0) {
-      toast({
-        title: "Error",
-        description: "Por favor complete todos los campos y asegúrese de tener al menos un horario",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      // Verificar conflictos para todos los horarios
-      for (const horario of horarios) {
-        const conflicto = await verificarConflictos(horario, editingGrupo.id)
-        if (conflicto) {
-          setConflictoHorario(conflicto)
-          setIsConflictoModalOpen(true)
-          return
-        }
-      }
-
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      const { data, error } = await supabase
-        .from(tables.grupos)
-        .update({
-          numero: grupoNumero,
-          alumnos: Number.parseInt(grupoAlumnos),
-          turno: grupoTurno,
-          horarios: horarios,
-        })
-        .eq("id", editingGrupo.id)
-
-      if (error) {
-        console.error("Error updating grupo:", error)
-        setError("Error al actualizar el grupo")
+}
+ 
+async function updateGrupo() {
+  if (!editingGrupo) return;
+  setLoading(true);
+  const updatedGrupoData = {
+      id: editingGrupo.id,
+      numero: grupoNumero,
+      alumnos: Number.parseInt(grupoAlumnos),
+      turno: grupoTurno,
+      horarios: horarios,
+      materia_id: editingGrupo.materia_id,
+  };
+  try {
+      // HE AQUÍ LA CORRECCIÓN: Se añade el if/else para usar la API o Supabase.
+      if (useMySqlApi) {
+           const response = await fetch('/api/materias-grupos', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'grupo', payload: updatedGrupoData, periodoId: selectedPeriod }),
+          });
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Error al actualizar el grupo vía API.');
+          }
       } else {
-        // Actualizar asignaciones existentes
-        try {
-          // Primero eliminar las asignaciones existentes
-          await supabase.from(tables.asignaciones).delete().eq("grupo_id", editingGrupo.id)
-
-          // Luego crear nuevas asignaciones
-          const grupoActualizado = {
-            id: editingGrupo.id,
-            numero: grupoNumero,
-            alumnos: Number.parseInt(grupoAlumnos),
-            turno: grupoTurno,
-            horarios: horarios,
-          }
-          await crearAsignacionesAutomaticas(grupoActualizado, editingGrupo.materia_id)
-        } catch (error) {
-          console.error("Error actualizando asignaciones:", error)
-        }
-
-        fetchData()
-        setEditingGrupo(null)
-        setGrupoNumero("")
-        setGrupoAlumnos("")
-        setGrupoTurno("MAÑANA")
-        setHorarios([])
-        setIsEditGrupoModalOpen(false)
-        toast({
-          title: "Éxito",
-          description: "Grupo actualizado correctamente.",
-        })
+          const tables = getTableNamesByPeriod(selectedPeriod);
+          const { error } = await supabase.from(tables.grupos).update(updatedGrupoData).eq("id", editingGrupo.id);
+          if (error) throw error;
       }
-    } catch (error) {
-      console.error("Error al actualizar grupo:", error)
-      toast({
-        title: "Error",
-        description: "Ocurrió un error al actualizar el grupo",
-        variant: "destructive",
-      })
-    }
+      await fetchData();
+      setIsEditGrupoModalOpen(false);
+      toast({ title: "Éxito", description: "Grupo actualizado." });
+  } catch (err) {
+      setError((err as Error).message);
+  } finally {
+      setLoading(false);
   }
+}
 
   const confirmDeleteGrupo = (id: number) => {
     setGrupoToDelete(id)
     setIsDeleteGrupoModalOpen(true)
   }
-
+  
+ 
   async function executeDeleteGrupo() {
-    if (!grupoToDelete || !selectedPeriod) return
+    if (!grupoToDelete || !selectedPeriod) return;
 
-    const tables = getTableNamesByPeriod(selectedPeriod)
+    // HE AQUÍ LA CORRECCIÓN: Se activa el estado de carga y se limpia cualquier error previo.
+    setLoading(true);
+    setError(null);
 
     try {
-      // First, delete all asignaciones associated with this grupo
-      const { error: asignacionesError } = await supabase
-        .from(tables.asignaciones)
-        .delete()
-        .eq("grupo_id", grupoToDelete)
+        // HE AQUÍ LA CORRECCIÓN: Verificamos el feature flag para decidir qué lógica usar.
+        if (useMySqlApi) {
+            // Si el flag de MySQL está activo, llamamos a nuestra API.
+            const response = await fetch(
+                `/api/materias-grupos?id=${grupoToDelete}&type=grupo&periodoId=${selectedPeriod}`, 
+                {
+                    method: 'DELETE',
+                }
+            );
 
-      if (asignacionesError) {
-        console.error("Error deleting asignaciones:", asignacionesError)
-      }
+            if (!response.ok) {
+                const errorData = await response.json();
+                // Lanza un error para que sea capturado por el bloque catch.
+                throw new Error(errorData.error || 'Error al eliminar el grupo vía API.');
+            }
+        } else {
+            // Lógica original de Supabase (se mantiene como fallback).
+            const tables = getTableNamesByPeriod(selectedPeriod);
+            
+            // Primero, eliminar las asignaciones asociadas.
+            const { error: asignacionesError } = await supabase
+                .from(tables.asignaciones)
+                .delete()
+                .eq("grupo_id", grupoToDelete);
 
-      // Then, delete the grupo
-      const { error: grupoError } = await supabase.from(tables.grupos).delete().eq("id", grupoToDelete)
+            if (asignacionesError) throw asignacionesError;
 
-      if (grupoError) throw grupoError
+            // Luego, eliminar el grupo.
+            const { error: grupoError } = await supabase
+                .from(tables.grupos)
+                .delete()
+                .eq("id", grupoToDelete);
 
-      fetchData()
-      setIsDeleteGrupoModalOpen(false)
-      setGrupoToDelete(null)
-      toast({
-        title: "Éxito",
-        description: "Grupo eliminado correctamente.",
-      })
-    } catch (error) {
-      console.error("Error deleting grupo:", error)
-      setError("Error al eliminar el grupo")
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar el grupo. Por favor, inténtelo de nuevo.",
-        variant: "destructive",
-      })
+            if (grupoError) throw grupoError;
+        }
+
+        // La lógica de éxito se ejecuta sin importar el método (API o Supabase).
+        await fetchData(); // Recargamos los datos para reflejar la eliminación.
+        setIsDeleteGrupoModalOpen(false);
+        setGrupoToDelete(null);
+        toast({
+            title: "Éxito",
+            description: "Grupo eliminado correctamente.",
+        });
+
+    } catch (err) {
+        // Manejo de errores unificado.
+        const message = err instanceof Error ? err.message : "Error al eliminar el grupo.";
+        console.error("Error deleting grupo:", err);
+        setError(message);
+        toast({
+            title: "Error de Eliminación",
+            description: message,
+            variant: "destructive",
+        });
+    } finally {
+        // Nos aseguramos de desactivar el estado de carga.
+        setLoading(false);
     }
-  }
+}
 
+async function executeDeleteMateria() {
+  if (!materiaToDelete) return;
+  setLoading(true);
+  try {
+      // HE AQUÍ LA CORRECCIÓN: Se añade el if/else para usar la API o Supabase.
+      if (useMySqlApi) {
+          const response = await fetch(`/api/materias-grupos?id=${materiaToDelete}&type=materia&periodoId=${selectedPeriod}`, {
+              method: 'DELETE',
+          });
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Error al eliminar vía API');
+          }
+      } else {
+          const tables = getTableNamesByPeriod(selectedPeriod);
+          const { data: gruposData } = await supabase.from(tables.grupos).select("id").eq("materia_id", materiaToDelete);
+          if (gruposData && gruposData.length > 0) {
+              const grupoIds = gruposData.map(g => g.id);
+              await supabase.from(tables.asignaciones).delete().in("grupo_id", grupoIds);
+          }
+          await supabase.from(tables.grupos).delete().eq("materia_id", materiaToDelete);
+          await supabase.from(tables.materias).delete().eq("id", materiaToDelete);
+      }
+      fetchData();
+      toast({ title: "Éxito", description: "Materia eliminada." });
+  } catch (err) {
+      setError((err as Error).message);
+  } finally {
+      setIsDeleteMateriaModalOpen(false);
+      setLoading(false);
+  }
+}
   // Modificar la función handleEditGrupo para incluir el número de horas de clase
   const handleEditGrupo = (grupo: Grupo) => {
     setEditingGrupo(grupo)
@@ -1253,6 +1100,15 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
       id: "actions",
       cell: ({ row }) => {
         const materia = row.original
+
+
+        if (authLoading || dataLoading) {
+          return (
+            <div className="flex items-center justify-center min-h-[400px]">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          );
+        }
         return (
           <div className="flex justify-end space-x-2">
             <Button variant="outline" size="sm" onClick={() => handleEditMateria(materia)}>
@@ -1819,27 +1675,7 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={isDeleteMateriaModalOpen} onOpenChange={setIsDeleteMateriaModalOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Confirmar eliminación</DialogTitle>
-              </DialogHeader>
-              <div className="py-3">
-                <p>¿Está seguro de que desea eliminar esta materia? Esta acción no se puede deshacer.</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Se eliminarán también todos los grupos y asignaciones asociadas a esta materia.
-                </p>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDeleteMateriaModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button variant="destructive" onClick={executeDeleteMateria}>
-                  Eliminar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+       
           <Dialog open={isDeleteGrupoModalOpen} onOpenChange={setIsDeleteGrupoModalOpen}>
             <DialogContent>
               <DialogHeader>
@@ -1861,6 +1697,27 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          
+          <Dialog open={isDeleteMateriaModalOpen} onOpenChange={setIsDeleteMateriaModalOpen}>
+    <DialogContent>
+        <DialogHeader>
+            {/* HE AQUÍ LA CORRECCIÓN: Añade este DialogTitle */}
+            <DialogTitle>Confirmar eliminación</DialogTitle>
+            <DialogDescription>
+                ¿Está seguro de que desea eliminar esta materia? Esta acción no se puede deshacer.
+                Se eliminarán también todos los grupos y asignaciones asociadas a esta materia.
+            </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteMateriaModalOpen(false)}>
+                Cancelar
+            </Button>
+            <Button variant="destructive" onClick={executeDeleteMateria}>
+                Eliminar
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
 
           <Dialog open={isConflictoModalOpen} onOpenChange={setIsConflictoModalOpen}>
             <DialogContent>
@@ -2258,3 +2115,4 @@ export default function MateriaGrupoManagement({ selectedPeriod }: Props) {
   background: #3b4a6b;
 }
 `}</style>
+

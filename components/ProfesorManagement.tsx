@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { DataTable } from "@/components/ui/data-table"
+import { featureFlags } from '@/lib/config' //featuare flag
 import { toast } from "@/components/ui/use-toast"
-import { Upload, Search, AlertTriangle, UserPlus, Info, Link2Off, Clock, Eye, Edit, Plus, Mail } from "lucide-react"
+import { Upload, Search, AlertTriangle, UserPlus, Info, Link2Off, Clock, Eye, Edit, Plus, Mail,Trash2} from "lucide-react"
 import type { ColumnDef } from "@tanstack/react-table"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
@@ -141,6 +142,7 @@ export default function ProfesorManagement() {
   const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const useMySqlApi = featureFlags.profesores === 'mysql';
   const [existingProfesors, setExistingProfesors] = useState<Profesor[]>([])
   const [showAssociateDialog, setShowAssociateDialog] = useState(false)
   const [selectedProfesorId, setSelectedProfesorId] = useState<string | null>(null)
@@ -228,74 +230,86 @@ export default function ProfesorManagement() {
 
   // Función para cargar profesores
   const fetchProfesores = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-
+    setIsLoading(true);
+    setError(null);
+  
     try {
-      // Cargar todos los profesores primero para mostrar algo rápidamente
-      const { data: allProfesores, error: loadError } = await supabase
-        .from("profesores")
-        .select("*")
-        .order("nombre", { ascending: true })
-
-      if (loadError) throw loadError
-
-      // Mostrar todos los profesores inmediatamente
-      setProfesores(allProfesores || [])
-
-      // Si el usuario es admin (verificado por localStorage o estado), no necesitamos filtrar
-      if (isUserAdmin || userRole === "admin") {
-        console.log("Usuario es admin, mostrando todos los profesores")
-        setDebugInfo(`Total profesores cargados: ${allProfesores?.length || 0}`)
-        setIsLoading(false)
-        return
-      }
-
-      // Si no tenemos usuario o ID, no podemos filtrar
-      if (!currentUserId) {
-        setIsLoading(false)
-        return
-      }
-
-      // Para usuarios normales, filtrar los profesores
-      const tableExists = await checkTableExists()
-
-      // Consulta 1: Profesores propios
-      const { data: ownedProfesors } = await supabase.from("profesores").select("*").eq("usuario_id", currentUserId)
-
-      // Consulta 2: Profesores asociados
-      let associatedProfesors: Profesor[] = []
-
-      if (tableExists) {
-        const { data: associatedIds } = await supabase
-          .from("profesor_usuario")
-          .select("profesor_id")
-          .eq("usuario_id", currentUserId)
-
-        if (associatedIds?.length > 0) {
-          const ids = associatedIds.map((item) => item.profesor_id)
-
-          const { data: profesorsData } = await supabase.from("profesores").select("*").in("id", ids)
-
-          if (profesorsData) {
-            associatedProfesors = profesorsData.map((prof) => ({ ...prof, is_associated: true }))
-          }
+      let data: Profesor[] | null = null;
+      let fetchError: any = null; // Usado para errores de Supabase
+  
+      // --- INICIO DE LA LÓGICA DEL FEATURE FLAG ---
+  
+      if (useMySqlApi) {
+        // 1. Si el flag es 'mysql', llama a nuestra nueva API de MySQL
+        console.log("Usando API de MySQL para Profesores");
+        const response = await fetch('/api/profesores');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error al cargar profesores desde la API');
+        }
+        data = await response.json();
+  
+      } 
+      
+      else {
+        // 2. Si el flag está desactivado, se ejecuta tu lógica original de Supabase
+        console.log("Usando Supabase para Profesores");
+        const { data: allProfesores, error: loadError } = await supabase
+          .from("profesores")
+          .select("*")
+          .order("nombre", { ascending: true });
+  
+        if (loadError) {
+          // Asignamos el error para manejarlo de forma unificada más abajo
+          fetchError = loadError;
+        } else {
+            // Si no hay error, procesamos los datos como antes
+            if (isUserAdmin || userRole === "admin") {
+              data = allProfesores || [];
+            } else if (currentUserId) {
+              const tableExists = await checkTableExists();
+              const { data: ownedProfesors } = await supabase.from("profesores").select("*").eq("usuario_id", currentUserId);
+              let associatedProfesors: Profesor[] = [];
+  
+              if (tableExists) {
+                const { data: associatedIds } = await supabase.from("profesor_usuario").select("profesor_id").eq("usuario_id", currentUserId);
+                if (associatedIds && associatedIds.length > 0) {
+                  const ids = associatedIds.map((item) => item.profesor_id);
+                  const { data: profesorsData } = await supabase.from("profesores").select("*").in("id", ids);
+                  if (profesorsData) {
+                    associatedProfesors = profesorsData.map((prof) => ({ ...prof, is_associated: true }));
+                  }
+                }
+              }
+              const combined = [...(ownedProfesors || []), ...associatedProfesors];
+              const uniqueProfesors = Array.from(new Map(combined.map((item) => [item.id, item])).values());
+              data = uniqueProfesors.sort((a, b) => a.nombre.localeCompare(b.nombre));
+            } else {
+                data = allProfesores || []; // Fallback para mostrar todos si no hay usuario
+            }
         }
       }
-
-      // Combinar y eliminar duplicados
-      const allProfesors = [...(ownedProfesors || []), ...associatedProfesors]
-      const uniqueProfesors = Array.from(new Map(allProfesors.map((item) => [item.id, item])).values())
-
-      // Actualizar la lista de profesores filtrada
-      setProfesores(uniqueProfesors.sort((a, b) => a.nombre.localeCompare(b.nombre)))
+  
+      // --- FIN DE LA LÓGICA DEL FEATURE FLAG ---
+  
+      if (fetchError) throw fetchError;
+  
+      // Actualizamos el estado con los datos obtenidos, sea de MySQL o Supabase
+      setProfesores(data || []);
+  
     } catch (error) {
-      console.error("Error fetching profesores:", error)
-      setError("Error al cargar los profesores: " + (error instanceof Error ? error.message : String(error)))
+      const message = error instanceof Error ? error.message : "Error al cargar los profesores";
+      console.error("Error fetching profesores:", error);
+      setError(message);
+      toast({
+          title: "Error de Carga",
+          description: message,
+          variant: "destructive"
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }, [isUserAdmin, userRole, currentUserId, checkTableExists])
+  }, [useMySqlApi, isUserAdmin, userRole, currentUserId, checkTableExists]);
 
   // Efecto para inicializar datos al montar el componente
   useEffect(() => {
@@ -323,52 +337,72 @@ export default function ProfesorManagement() {
   }, [userRole, fetchProfesores])
 
   async function addProfesor() {
+    // --- 1. Tu lógica de validación se mantiene intacta ---
     if (!nombre || !email) {
-      setValidationMessage("Por favor, complete todos los campos obligatorios.")
+      setValidationMessage("Por favor, complete todos los campos OBLIGATORIOS.")
       setShowValidationDialog(true)
       return
     }
-
+  
     if (!isValidEmail(email)) {
       setValidationMessage("Por favor, ingrese un email válido.")
       setShowValidationDialog(true)
       return
     }
-
-    // Buscar profesores existentes por nombre o email
-    const { data: existingProfesors, error: searchError } = await supabase
-      .from("profesores")
-      .select("*")
-      .or(`nombre.ilike.%${nombre}%,email.ilike.${email}`)
-
-    if (searchError) {
-      console.error("Error buscando profesores existentes:", searchError)
-      setValidationMessage("Error al buscar profesores existentes. Por favor, intente de nuevo.")
-      setShowValidationDialog(true)
-      return
+  
+    // --- 2. Tu lógica para buscar duplicados y asociar se mantiene ---
+    // (Esta parte seguirá usando Supabase por ahora, ya que es una funcionalidad compleja)
+    if (!useMySqlApi) {
+        const { data: existingProfesors, error: searchError } = await supabase
+        .from("profesores")
+        .select("*")
+        .or(`nombre.ilike.%${nombre}%,email.ilike.${email}`)
+  
+        if (searchError) {
+          console.error("Error buscando profesores existentes:", searchError)
+          setValidationMessage("Error al buscar profesores existentes. Por favor, intente de nuevo.")
+          setShowValidationDialog(true)
+          return
+        }
+  
+        if (existingProfesors && existingProfesors.length > 0) {
+          setExistingProfesors(existingProfesors)
+          setShowAssociateDialog(true)
+          return
+        }
     }
-
-    // Si encontramos profesores existentes, mostrar el diálogo de asociación
-    if (existingProfesors && existingProfesors.length > 0) {
-      setExistingProfesors(existingProfesors)
-      setShowAssociateDialog(true)
-      return
-    }
-
-    // Si no hay profesores existentes, proceder con la inserción normal
-    const { error: insertError } = await supabase.from("profesores").insert([
-      {
+  
+  
+    // --- 3. La inserción del nuevo profesor ahora usa el Feature Flag ---
+    setIsLoading(true);
+    try {
+      const profesorData = {
         nombre,
         email,
         usuario_id: currentUserId,
-      },
-    ])
-
-    if (insertError) {
-      console.error("Error adding profesor:", insertError)
-      setValidationMessage(`Error al agregar el profesor: ${insertError.message}`)
-      setShowValidationDialog(true)
-    } else {
+      };
+  
+      if (useMySqlApi) {
+        // Si el flag es 'mysql', llama a nuestra nueva API
+        const response = await fetch('/api/profesores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(profesorData),
+        });
+        const responseData = await response.json();
+        if (!response.ok) {
+          // Lanza un error para que el bloque catch lo maneje
+          throw new Error(responseData.error || 'Error al agregar el profesor');
+        }
+      } else {
+        // Si el flag está desactivado, usa la lógica original de Supabase
+        const { error: insertError } = await supabase.from("profesores").insert([profesorData]);
+        if (insertError) {
+          throw insertError; // Lanza el error para que el bloque catch lo maneje
+        }
+      }
+  
+      // --- 4. El código de éxito se ejecuta si no hubo errores ---
       fetchProfesores()
       setNombre("")
       setEmail("")
@@ -376,6 +410,15 @@ export default function ProfesorManagement() {
         title: "Éxito",
         description: "Profesor agregado correctamente",
       })
+  
+    } catch (err) {
+      // --- 5. Manejo de errores unificado ---
+      const message = err instanceof Error ? err.message : "Ocurrió un error al agregar el profesor.";
+      console.error("Error adding profesor:", err);
+      setValidationMessage(message);
+      setShowValidationDialog(true);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -412,45 +455,50 @@ export default function ProfesorManagement() {
     setShowDeleteConfirmDialog(true)
   }
 
-  async function handleDeleteConfirm() {
-    if (!profesorToDelete) return
+ // En components/ProfesorManagement.tsx
 
-    try {
-      // Actualizar las materias en todas las tablas específicas por periodo
-      const tablasMaterias = [
-        "materias", // Tabla general
-        "materias_enero_abril",
-        "materias_mayo_agosto",
-        "materias_septiembre_diciembre",
-      ]
-
+ const handleDeleteConfirm = async () => {
+  if (!profesorToDelete) return;
+  
+  setIsLoading(true);
+  try {
+    if (useMySqlApi) {
+      // Lógica para MySQL: Llama a la API que ya se encarga de todo
+      const response = await fetch(`/api/profesores?id=${profesorToDelete.id}`, {
+        method: 'DELETE',
+      });
+      const responseData = await response.json();
+      if (!response.ok) throw new Error(responseData.error || 'Error al eliminar');
+    } else {
+      // Lógica para Supabase: Mantiene el código original para desvincular
+      const tablasMaterias = ["materias_enero_abril", "materias_mayo_agosto", "materias_septiembre_diciembre"];
       for (const tabla of tablasMaterias) {
         const { error: updateError } = await supabase
           .from(tabla)
           .update({ profesor_id: null })
-          .eq("profesor_id", profesorToDelete.id)
-
+          .eq("profesor_id", profesorToDelete.id);
         if (updateError) {
-          console.error(`Error actualizando ${tabla}:`, updateError)
-          throw updateError
+          // Este es el error que estabas viendo, ahora solo se ejecuta en modo Supabase
+          throw new Error(`Fallo al actualizar '${tabla}': ${JSON.stringify(updateError)}`);
         }
       }
-
-      // Luego, eliminar el profesor
-      const { error: deleteError } = await supabase.from("profesores").delete().eq("id", profesorToDelete.id)
-
-      if (deleteError) throw deleteError
-
-      fetchProfesores()
-      console.log("Profesor eliminado y materias actualizadas correctamente.")
-    } catch (error) {
-      console.error("Error en la operación de eliminación:", error)
-      setError("Hubo un problema al eliminar el profesor. Por favor, intente de nuevo.")
-    } finally {
-      setShowDeleteConfirmDialog(false)
-      setProfesorToDelete(null)
+      const { error: deleteError } = await supabase.from("profesores").delete().eq("id", profesorToDelete.id);
+      if (deleteError) throw deleteError;
     }
+    
+    fetchProfesores();
+    toast({ title: "Éxito", description: "Profesor eliminado correctamente." });
+
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Hubo un problema al eliminar.";
+    setError(message);
+    toast({ variant: "destructive", title: "Error de Eliminación", description: message });
+  } finally {
+    setShowDeleteConfirmDialog(false);
+    setProfesorToDelete(null);
+    setIsLoading(false);
   }
+};
 
   async function disassociateProfesor(profesor: Profesor) {
     if (!profesor || !currentUserId) return

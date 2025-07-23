@@ -4,10 +4,11 @@ import type React from "react"
 
 import { useState } from "react"
 import { supabase, fetchWithRetry } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth"; 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { School, Mail, Lock, Eye, EyeOff, AlertTriangle } from "lucide-react"
+import { User,School, Mail, Lock, Eye, EyeOff, AlertTriangle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { motion } from "framer-motion"
@@ -96,12 +97,13 @@ export default function Auth() {
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [isLogin, setIsLogin] = useState(true)
+  const [nombre, setNombre] = useState("") 
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
   const [message, setMessage] = useState<string | null>(null)
-
+  const { login } = useAuth(); 
+  const [isLogin, setIsLogin] = useState(true)
   const validateForm = () => {
     if (!email.trim()) {
       setError("Por favor, ingresa tu correo electrónico")
@@ -131,82 +133,110 @@ export default function Auth() {
   }
 
   // Actualizar la función handleLogin para manejar mejor los errores
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    try {
-      const { data, error } = await fetchWithRetry(async () => {
-        return await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
-      })
-
-      if (error) throw error
-
-      toast({
+  const handleLogin = async () => {
+    const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || "Error de autenticación");
+    }
+    // Si el login en API es exitoso, actualizamos el estado global
+    await login({ email, password });
+    toast({
         title: "Inicio de sesión exitoso",
-        description: "Has iniciado sesión correctamente.",
-      })
-    } catch (error: any) {
-      console.error("Error during login:", error)
-      if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-        setError("Error de conexión. Verifica tu conexión a internet e intenta nuevamente.")
-      } else {
-        setError(error.error_description || error.message || "Error al iniciar sesión")
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
+        description: "Bienvenido de nuevo.",
+    });
+};
 
+const handleRegister = async () => {
+  const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, email, password }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+      throw new Error(data.error || "Error en el registro.");
+  }
+  // Mostramos el mensaje de "revisa tu correo"
+  setMessage(data.message);
+  toast({
+      title: "¡Casi listo!",
+      description: "Revisa tu correo para activar tu cuenta.",
+  });
+};
   // Actualizar la función handleSignUp para manejar mejor los errores
-  const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
+  // const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
+  //   e.preventDefault()
+  //   setLoading(true)
+  //   setError(null)
 
-    try {
-      const { data, error } = await fetchWithRetry(async () => {
-        return await supabase.auth.signUp({
-          email,
-          password,
-        })
-      })
+  //   try {
+  //     const { data, error } = await fetchWithRetry(async () => {
+  //       return await supabase.auth.signUp({
+  //         email,
+  //         password,
+  //       })
+  //     })
 
-      if (error) throw error
+  //     if (error) throw error
 
-      toast({
-        title: "Registro exitoso",
-        description: "Por favor, verifica tu email para completar el registro.",
-      })
+  //     toast({
+  //       title: "Registro exitoso",
+  //       description: "Por favor, verifica tu email para completar el registro.",
+  //     })
 
-      setMessage("Revisa tu correo electrónico para confirmar tu cuenta")
-    } catch (error: any) {
-      console.error("Error during signup:", error)
-      if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-        setError("Error de conexión. Verifica tu conexión a internet e intenta nuevamente.")
-      } else {
-        setError(error.error_description || error.message || "Error al registrarse")
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
+  //     setMessage("Revisa tu correo electrónico para confirmar tu cuenta")
+  //   } catch (error: any) {
+  //     console.error("Error during signup:", error)
+  //     if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+  //       setError("Error de conexión. Verifica tu conexión a internet e intenta nuevamente.")
+  //     } else {
+  //       setError(error.error_description || error.message || "Error al registrarse")
+  //     }
+  //   } finally {
+  //     setLoading(false)
+  //   }
+  // }
 
   const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setMessage(null);
 
-    if (!validateForm()) return
-
-    if (isLogin) {
-      await handleLogin(e)
-    } else {
-      await handleSignUp(e)
+    // Validaciones básicas
+    if (!isLogin && !nombre.trim()) {
+        setError("Por favor, ingresa tu nombre");
+        setLoading(false);
+        return;
     }
-  }
+    if (!email.trim() || !password.trim()) {
+        setError("Correo y contraseña son requeridos");
+        setLoading(false);
+        return;
+    }
+    if (password.length < 6) {
+        setError("La contraseña debe tener al menos 6 caracteres");
+        setLoading(false);
+        return;
+    }
+
+    try {
+        if (isLogin) {
+            await handleLogin();
+        } else {
+            await handleRegister();
+        }
+    } catch (err: any) {
+        setError(err.message);
+    } finally {
+        setLoading(false);
+    }
+};
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword)
@@ -234,6 +264,8 @@ export default function Auth() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+   
+
 
             {message && (
               <Alert className="mb-4">
@@ -241,22 +273,38 @@ export default function Auth() {
               </Alert>
             )}
 
-            <form onSubmit={handleAuth} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Correo electrónico</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="tu@ejemplo.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="pl-10 border-secondary/30"
-                  />
-                </div>
-              </div>
+
+
+
+
+           
+<form onSubmit={handleAuth} className="space-y-4">
+                            
+                            {/* ✅ CAMPO "NOMBRE" QUE APARECE SOLO EN REGISTRO */}
+                            {!isLogin && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="nombre">Nombre</Label>
+                                    <div className="relative">
+                                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            id="nombre" type="text" placeholder="Tu nombre completo"
+                                            value={nombre} onChange={(e) => setNombre(e.target.value)}
+                                            required={!isLogin} className="pl-10 border-secondary/30"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                             <div className="space-y-2">
+                                <Label htmlFor="email">Correo electrónico</Label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        id="email" type="email" placeholder="tu@ejemplo.com"
+                                        value={email} onChange={(e) => setEmail(e.target.value)}
+                                        required className="pl-10 border-secondary/30"
+                                    />
+                                </div>
+                            </div>
 
               <div className="space-y-2">
                 <Label htmlFor="password">Contraseña</Label>
@@ -297,7 +345,8 @@ export default function Auth() {
                   "Iniciar Sesión"
                 ) : (
                   "Registrarse"
-                )}
+                )
+                }
               </Button>
             </form>
           </CardContent>

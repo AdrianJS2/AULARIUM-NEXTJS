@@ -1,75 +1,22 @@
--- Verificar si la columna remitente_id ya existe
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'notificaciones'
-        AND column_name = 'remitente_id'
-    ) THEN
-        -- Agregar columna remitente_id
-        ALTER TABLE notificaciones ADD COLUMN remitente_id UUID REFERENCES auth.users(id);
-    END IF;
+-- #####################################################################
+-- ## TRADUCCIÓN A MYSQL - MODIFICAR TABLA `notificaciones`
+-- #####################################################################
+--
+-- Explicación de Cambios:
+-- 1. Eliminación de Lógica PostgreSQL: Se ha eliminado el bloque `DO $$...$$` y todas las sentencias `DROP POLICY` y `CREATE POLICY`,
+--    ya que son específicas de PostgreSQL y no tienen un equivalente directo en MySQL. La seguridad de acceso a los datos
+--    deberá ser manejada por la lógica de la aplicación.
+-- 2. Sintaxis de MySQL: Se utiliza `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` para añadir las nuevas columnas de forma segura.
+-- 3. Tipo de Dato UUID: El tipo `UUID` se ha cambiado a `VARCHAR(36)`, que es el tipo de dato recomendado para almacenar UUIDs en MySQL
+--    para garantizar la compatibilidad.
+-- 4. Clave Foránea: La referencia a `auth.users(id)` (una tabla de Supabase) se ha cambiado para apuntar a tu propia tabla `usuarios(id)`.
+--    Esto asume que crearás una tabla `usuarios` con un `id` de tipo `VARCHAR(36)`.
 
-    IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_name = 'notificaciones'
-        AND column_name = 'resuelta'
-    ) THEN
-        -- Agregar columna resuelta
-        ALTER TABLE notificaciones ADD COLUMN resuelta BOOLEAN DEFAULT FALSE;
-    END IF;
-END
-$$;
+-- --- Añadir columnas `remitente_id` y `resuelta` a la tabla de notificaciones ---
 
--- Actualizar las políticas de seguridad
--- Primero eliminar las políticas existentes si existen
-DROP POLICY IF EXISTS "Los usuarios pueden ver sus propias notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los administradores pueden ver todas las notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los usuarios pueden crear notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los usuarios pueden actualizar sus propias notificaciones" ON notificaciones;
-DROP POLICY IF EXISTS "Los administradores pueden actualizar cualquier notificación" ON notificaciones;
+ALTER TABLE `notificaciones`
+  ADD COLUMN IF NOT EXISTS `remitente_id` VARCHAR(36),
+  ADD COLUMN IF NOT EXISTS `resuelta` BOOLEAN DEFAULT FALSE,
+  ADD CONSTRAINT `fk_notificaciones_remitente`
+    FOREIGN KEY IF NOT EXISTS (`remitente_id`) REFERENCES `usuarios`(`id`) ON DELETE SET NULL;
 
--- Crear nuevas políticas
--- Política para que los usuarios vean sus propias notificaciones
-CREATE POLICY "Los usuarios pueden ver sus propias notificaciones"
-ON notificaciones
-FOR SELECT
-USING (auth.uid() = destinatario_id OR auth.uid() = remitente_id);
-
--- Política para que los administradores vean todas las notificaciones
-CREATE POLICY "Los administradores pueden ver todas las notificaciones"
-ON notificaciones
-FOR SELECT
-USING (
-    EXISTS (
-        SELECT 1 FROM usuarios
-        WHERE usuarios.id = auth.uid()
-        AND usuarios.rol = 'admin'
-    )
-);
-
--- Política para que los usuarios creen notificaciones
-CREATE POLICY "Los usuarios pueden crear notificaciones"
-ON notificaciones
-FOR INSERT
-WITH CHECK (true);
-
--- Política para que los usuarios actualicen sus propias notificaciones
-CREATE POLICY "Los usuarios pueden actualizar sus propias notificaciones"
-ON notificaciones
-FOR UPDATE
-USING (auth.uid() = destinatario_id);
-
--- Política para que los administradores actualicen cualquier notificación
-CREATE POLICY "Los administradores pueden actualizar cualquier notificación"
-ON notificaciones
-FOR UPDATE
-USING (
-    EXISTS (
-        SELECT 1 FROM usuarios
-        WHERE usuarios.id = auth.uid()
-        AND usuarios.rol = 'admin'
-    )
-);

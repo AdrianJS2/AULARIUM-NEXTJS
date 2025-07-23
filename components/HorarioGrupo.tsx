@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo,useCallback } from "react"
 import { supabase } from "../lib/supabase"
+import { featureFlags } from '@/lib/config';
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -12,7 +14,8 @@ import html2canvas from "html2canvas"
 import jsPDF from "jspdf"
 import type { ConfiguracionHorario } from "@/types/config"
 import { useToast } from "@/components/ui/use-toast"
-import { isAdmin, getUserRole } from "@/lib/auth"
+// import { isAdmin, getUserRole } from "@/lib/auth"
+import { useAuth } from "@/lib/auth";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +93,9 @@ interface FiltrosHorario {
 }
 
 export default function HorarioGrupo({ selectedPeriod }) {
+  
+
+  const userCarreraId = null; // Este dato ya no se obtiene aquí.
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [materias, setMaterias] = useState<Materia[]>([])
   const [profesores, setProfesores] = useState<Profesor[]>([])
@@ -101,11 +107,9 @@ export default function HorarioGrupo({ selectedPeriod }) {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isUserAdmin, setIsUserAdmin] = useState<boolean>(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [userRole, setUserRole] = useState<string | null>(null)
-  const [userCarreraId, setUserCarreraId] = useState<number | null>(null)
+  const [activeCycle, setActiveCycle] = useState<string>(selectedPeriod || "1");
   const [autoRefreshAttempts, setAutoRefreshAttempts] = useState(0)
-  const [activeCycle, setActiveCycle] = useState<string>("1") // Default to Enero-Abril
+  // Default to Enero-Abril
   const [filtros, setFiltros] = useState<FiltrosHorario>({
     turno: null,
     busqueda: "",
@@ -127,9 +131,10 @@ export default function HorarioGrupo({ selectedPeriod }) {
     fecha: new Date().toLocaleDateString(),
     horasFrenteGrupo: 0,
   })
+  const { user, isAdmin, loading: authLoading } = useAuth();
   const { toast } = useToast()
   const horarioRef = useRef<HTMLDivElement>(null)
-
+  const useMySqlApi = featureFlags.horarios === 'mysql';
   const horasMañana = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00"]
   const horasTarde = ["14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"]
   const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
@@ -268,34 +273,7 @@ export default function HorarioGrupo({ selectedPeriod }) {
     }))
   }, [activeCycle])
 
-  useEffect(() => {
-    async function fetchUserData() {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (user) {
-          setCurrentUserId(user.id)
-          const admin = await isAdmin(user.id)
-          setIsUserAdmin(admin)
-          const { rol, carrera_id } = await getUserRole(user.id)
-          setUserRole(rol)
-          setUserCarreraId(carrera_id)
 
-          // Iniciar carga de datos después de obtener la información del usuario
-          fetchData()
-        } else {
-          setLoading(false)
-        }
-      } catch (error) {
-        console.error("Error fetching user data:", error)
-        setError("Error al obtener datos del usuario")
-        setLoading(false)
-      }
-    }
-
-    fetchUserData()
-  }, [])
 
   const getTableNamesByPeriod = (periodId: string) => {
     switch (periodId) {
@@ -327,93 +305,93 @@ export default function HorarioGrupo({ selectedPeriod }) {
   }
 
   // Configurar suscripciones en tiempo real a cambios en la base de datos
-  useEffect(() => {
-    if (!effectivePeriod) return
+  // useEffect(() => {
+  //   if (!effectivePeriod) return
 
-    const tables = getTableNamesByPeriod(effectivePeriod)
+  //   const tables = getTableNamesByPeriod(effectivePeriod)
 
-    // Crear canales de suscripción para cada tabla relevante
-    const materiasChannel = supabase
-      .channel("materias-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: tables.materias,
-        },
-        () => {
-          console.log("Cambios detectados en materias, recargando datos...")
-          fetchData()
-        },
-      )
-      .subscribe()
+  //   // Crear canales de suscripción para cada tabla relevante
+  //   const materiasChannel = supabase
+  //     .channel("materias-changes")
+  //     .on(
+  //       "postgres_changes",
+  //       {
+  //         event: "*",
+  //         schema: "public",
+  //         table: tables.materias,
+  //       },
+  //       () => {
+  //         console.log("Cambios detectados en materias, recargando datos...")
+  //         fetchData()
+  //       },
+  //     )
+  //     .subscribe()
 
-    const gruposChannel = supabase
-      .channel("grupos-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: tables.grupos,
-        },
-        () => {
-          console.log("Cambios detectados en grupos, recargando datos...")
-          fetchData()
-        },
-      )
-      .subscribe()
+  //   const gruposChannel = supabase
+  //     .channel("grupos-changes")
+  //     .on(
+  //       "postgres_changes",
+  //       {
+  //         event: "*",
+  //         schema: "public",
+  //         table: tables.grupos,
+  //       },
+  //       () => {
+  //         console.log("Cambios detectados en grupos, recargando datos...")
+  //         fetchData()
+  //       },
+  //     )
+  //     .subscribe()
 
-    const asignacionesChannel = supabase
-      .channel("asignaciones-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: tables.asignaciones,
-        },
-        () => {
-          console.log("Cambios detectados en asignaciones, recargando datos...")
-          fetchData()
-        },
-      )
-      .subscribe()
+  //   const asignacionesChannel = supabase
+  //     .channel("asignaciones-changes")
+  //     .on(
+  //       "postgres_changes",
+  //       {
+  //         event: "*",
+  //         schema: "public",
+  //         table: tables.asignaciones,
+  //       },
+  //       () => {
+  //         console.log("Cambios detectados en asignaciones, recargando datos...")
+  //         fetchData()
+  //       },
+  //     )
+  //     .subscribe()
 
-    // Limpiar suscripciones al desmontar
-    return () => {
-      supabase.removeChannel(materiasChannel)
-      supabase.removeChannel(gruposChannel)
-      supabase.removeChannel(asignacionesChannel)
-    }
-  }, [effectivePeriod])
+  //   // Limpiar suscripciones al desmontar
+  //   return () => {
+  //     supabase.removeChannel(materiasChannel)
+  //     supabase.removeChannel(gruposChannel)
+  //     supabase.removeChannel(asignacionesChannel)
+  //   }
+  // }, [effectivePeriod])
 
   // Efecto para recargar automáticamente hasta detectar materias (máximo 2 intentos)
-  useEffect(() => {
-    // Solo intentar recargar si ya se ha cargado una vez pero no hay materias
-    if (!loading && materias.length === 0 && autoRefreshAttempts < 2) {
-      console.log(`Intento automático de recarga #${autoRefreshAttempts + 1} para detectar materias`)
+  // useEffect(() => {
+  //   // Solo intentar recargar si ya se ha cargado una vez pero no hay materias
+  //   if (!loading && materias.length === 0 && autoRefreshAttempts < 2) {
+  //     console.log(`Intento automático de recarga #${autoRefreshAttempts + 1} para detectar materias`)
 
-      // Esperar un momento antes de intentar recargar
-      const timer = setTimeout(() => {
-        fetchData()
-        setAutoRefreshAttempts((prev) => prev + 1)
-      }, 1500) // 1.5 segundos entre intentos
+  //     // Esperar un momento antes de intentar recargar
+  //     const timer = setTimeout(() => {
+  //       fetchData()
+  //       setAutoRefreshAttempts((prev) => prev + 1)
+  //     }, 1500) // 1.5 segundos entre intentos
 
-      return () => clearTimeout(timer)
-    }
-  }, [loading, materias.length, autoRefreshAttempts])
+  //     return () => clearTimeout(timer)
+  //   }
+  // }, [loading, materias.length, autoRefreshAttempts])
 
   // Efecto para cargar datos cuando cambia el ciclo
-  useEffect(() => {
-    if (currentUserId) {
-      // Resetear el grupo seleccionado al cambiar de ciclo
-      setSelectedGrupo(null)
-      // Cargar datos del nuevo ciclo
-      fetchData()
-    }
-  }, [activeCycle])
+  // useEffect(() => {
+  //   if (currentUserId) {
+  //     // Resetear el grupo seleccionado al cambiar de ciclo
+  //     setSelectedGrupo(null)
+  //     // Cargar datos del nuevo ciclo
+  //     fetchData()
+  //   }
+  // }, [activeCycle])
 
   useEffect(() => {
     if (selectedGrupo) {
@@ -446,275 +424,119 @@ export default function HorarioGrupo({ selectedPeriod }) {
   }
 
   // Modify the fetchData function to filter data based on admin status
-  async function fetchData() {
-    // Si ya está cargando, no hacer nada
-    if (refreshing) return
+
+  const fetchData = useCallback(async (periodoId: string) => {
+    // Solo se ejecuta si ya tenemos un usuario
+    if (!user) return;
+
+    setLoading(true);
+    setError(null);
+    setSelectedGrupo(null);
+    setGrupos([]); // Limpiamos los grupos para evitar mostrar datos viejos
 
     try {
-      // Usar el periodo efectivo (que nunca será null)
-      const periodId = effectivePeriod
-      console.log("Usando periodo:", periodId)
+      if (useMySqlApi) {
+        const params = new URLSearchParams({
+          periodoId: periodoId,
+          userId: user.id,
+          userRole: user.rol,
+        });
+        if (user.carrera_id) {
+          params.append('carreraId', user.carrera_id.toString());
+        }
 
-      const tables = getTableNamesByPeriod(periodId)
-
-      // Fetch user data and role first
-      if (currentUserId === null) {
-        console.log("No hay usuario actual, no se pueden cargar datos")
-        setLoading(false)
-        return
+        const response = await fetch(`/api/horarios?${params.toString()}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error en la respuesta de la API.');
+        }
+        
+        const data = await response.json();
+        setAulas(data.aulas || []);
+        setProfesores(data.profesores || []);
+        setMaterias(data.materias || []);
+        const parsedGrupos = (data.grupos || []).map((g: Grupo) => ({ ...g, horarios: Array.isArray(g.horarios) ? g.horarios : JSON.parse(g.horarios as any || "[]") }));
+        setGrupos(parsedGrupos);
+        setAsignaciones(data.asignaciones || []);
       }
-
-      setLoading(true)
-      console.log("Iniciando fetchData con periodo:", periodId)
-
-      // Clear previous data
-      setProfesores([])
-      setMaterias([])
-      setGrupos([])
-      setAulas([])
-      setAsignaciones([])
-
-      // Fetch all professors regardless of user role
-      const { data: profesoresData, error: profesoresError } = await supabase.from("profesores").select("*")
-      if (profesoresError) {
-        console.error("Error fetching profesores:", profesoresError)
-        throw new Error("Error fetching profesores: " + profesoresError.message)
-      }
-      console.log("Profesores cargados:", profesoresData?.length || 0)
-      setProfesores(profesoresData || [])
-
-      // Fetch all aulas - Aulas are shared by all users
-      const { data: aulasData, error: aulasError } = await supabase.from("aulas").select("*")
-      if (aulasError) {
-        console.error("Error fetching aulas:", aulasError)
-        throw new Error("Error fetching aulas: " + aulasError.message)
-      }
-      console.log("Aulas cargadas:", aulasData?.length || 0)
-      setAulas(aulasData || [])
-
-      // Different query logic based on user role
-      if (isUserAdmin) {
-        // Admin users can see all schedules, groups, and assignments
-        console.log("Admin user detected, fetching all data")
-
-        // Fetch all materials without filtering
-        const { data: materiasData, error: materiasError } = await supabase.from(tables.materias).select("*")
-
-        if (materiasError) {
-          console.error("Error fetching materias:", materiasError)
-          throw new Error("Error fetching materias: " + materiasError.message)
-        }
-        console.log("Materias cargadas (admin):", materiasData?.length || 0)
-
-        // Fetch all groups without filtering
-        const { data: gruposData, error: gruposError } = await supabase.from(tables.grupos).select("*")
-
-        if (gruposError) {
-          console.error("Error fetching grupos:", gruposError)
-          throw new Error("Error fetching grupos: " + gruposError.message)
-        }
-        console.log("Grupos cargados (admin):", gruposData?.length || 0, gruposData)
-
-        // Parse horarios for each grupo
-        const parsedGrupos = (gruposData || []).map((grupo) => {
-          let horarios
-          try {
-            horarios =
-              typeof grupo.horarios === "string"
-                ? JSON.parse(grupo.horarios)
-                : Array.isArray(grupo.horarios)
-                  ? grupo.horarios
-                  : []
-          } catch (e) {
-            console.error("Error parsing horarios for grupo:", grupo.id, e)
-            horarios = []
-          }
-          return {
-            ...grupo,
-            horarios,
-          }
-        })
-        console.log("Grupos parseados:", parsedGrupos.length, parsedGrupos)
-
-        // Fetch all assignments without filtering
-        const { data: asignacionesData, error: asignacionesError } = await supabase
-          .from(tables.asignaciones)
-          .select("*")
-
-        if (asignacionesError) {
-          console.error("Error fetching asignaciones:", asignacionesError)
-          throw new Error("Error fetching asignaciones: " + asignacionesError.message)
-        }
-        console.log("Asignaciones cargadas (admin):", asignacionesData?.length || 0, asignacionesData)
-
-        setMaterias(materiasData || [])
-        setGrupos(parsedGrupos)
-        setAsignaciones(asignacionesData || [])
-      } else {
-        // Regular users, directors, or coordinators can only see their own data
-        let materiasQuery = supabase.from(tables.materias).select("*")
-
-        // Filter by user_id or carrera_id based on role
-        if (userRole === "coordinador" && userCarreraId) {
-          // Coordinador: filter by carrera
-          materiasQuery = materiasQuery.eq("carrera_id", userCarreraId)
-        } else if (currentUserId) {
-          // Usuario normal, director o profesor: filter by usuario_id
-          // Esto asegura que solo vean sus propias materias
-          materiasQuery = materiasQuery.eq("usuario_id", currentUserId)
-        }
-
-        const { data: materiasData, error: materiasError } = await materiasQuery
-        if (materiasError) {
-          console.error("Error fetching materias:", materiasError)
-          throw new Error("Error fetching materias: " + materiasError.message)
-        }
-        setMaterias(materiasData || [])
-
-        // If no materias, no need to fetch grupos or asignaciones
-        if (!materiasData || materiasData.length === 0) {
-          setLoading(false)
-          return
-        }
-
-        // Get IDs of materias for filtering grupos
-        const materiaIds = materiasData.map((m) => m.id)
-
-        // Fetch groups for the user's materias
-        const { data: gruposData, error: gruposError } = await supabase
-          .from(tables.grupos)
-          .select("*")
-          .in("materia_id", materiaIds)
-        if (gruposError) {
-          console.error("Error fetching grupos:", gruposError)
-          throw new Error("Error fetching grupos: " + gruposError.message)
-        }
-
-        // Parse horarios for each grupo
-        const parsedGrupos = (gruposData || []).map((grupo) => ({
-          ...grupo,
-          horarios:
-            typeof grupo.horarios === "string"
-              ? JSON.parse(grupo.horarios)
-              : Array.isArray(grupo.horarios)
-                ? grupo.horarios
-                : [],
-        }))
-        setGrupos(parsedGrupos)
-
-        // If no grupos, no need to fetch asignaciones
-        if (!gruposData || gruposData.length === 0) {
-          setLoading(false)
-          return
-        }
-
-        // Get IDs of grupos for filtering asignaciones
-        const grupoIds = gruposData.map((g) => g.id)
-
-        // Fetch assignments for the user's grupos
-        const { data: asignacionesData, error: asignacionesError } = await supabase
-          .from(tables.asignaciones)
-          .select("*")
-          .in("grupo_id", grupoIds)
-        if (asignacionesError) {
-          console.error("Error fetching asignaciones:", asignacionesError)
-          throw new Error("Error fetching asignaciones: " + asignacionesError.message)
-        }
-        setAsignaciones(asignacionesData || [])
-      }
-
-      console.log("Datos cargados correctamente")
-      setLoading(false)
-    } catch (error: any) {
-      console.error("Error fetching data:", error)
-      setError(error.message || "Error al cargar los datos")
-      setLoading(false)
+    } catch (err: any) {
+      setError(err.message);
+      toast({ title: "Error de Carga", description: err.message, variant: "destructive" });
     } finally {
-      // Siempre terminar la carga, incluso si hay error
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  }, [user, useMySqlApi, toast]);
 
-  function generateHorario() {
-    console.log("Generando horario para grupo:", selectedGrupo?.numero)
-    console.log("Total de grupos disponibles:", grupos.length)
+  useEffect(() => {
+    // Esperamos a que la autenticación termine y tengamos un usuario.
+    if (!authLoading && user) {
+      fetchData(activeCycle);
+    }
+  }, [activeCycle, user, authLoading, fetchData]);
 
-    const gruposDelNumero = grupos.filter((g) => g.numero === selectedGrupo?.numero)
-    console.log("Grupos filtrados por número:", gruposDelNumero.length, gruposDelNumero)
 
+// --- LÓGICA PARA GENERAR EL HORARIO (CORREGIDA) ---
+const generateHorario = useCallback(() => {
+    if (!selectedGrupo) {
+        setHorario({}); // Limpia el horario si no hay grupo seleccionado
+        return;
+    }
+
+    const gruposDelNumero = grupos.filter((g) => g.numero === selectedGrupo.numero);
     if (gruposDelNumero.length === 0) {
-      console.warn("No se encontraron grupos con el número seleccionado")
-      return
+        setHorario({});
+        return;
     }
 
-    const primerGrupo = gruposDelNumero[0]
-    const horas = primerGrupo.turno === "MAÑANA" ? horasMañana : horasTarde
-    const horarioTemp: Record<string, Record<string, HorarioCell>> = {}
+    const primerGrupo = gruposDelNumero[0];
+    const horas = primerGrupo.turno === "MAÑANA" ? horasMañana : horasTarde;
+    const horarioTemp: Record<string, Record<string, HorarioCell>> = {};
 
-    // Inicializar estructura del horario
-    horas.forEach((hora) => {
-      horarioTemp[hora] = {}
-      dias.forEach((dia) => {
-        horarioTemp[hora][dia] = {
-          materias: [],
-        }
-      })
-    })
+    horas.forEach(hora => {
+        horarioTemp[hora] = {};
+        dias.forEach(dia => {
+            horarioTemp[hora][dia] = { materias: [] };
+        });
+    });
 
-    // Llenar el horario con las asignaciones de todos los grupos
-    gruposDelNumero.forEach((grupo) => {
-      console.log("Procesando grupo:", grupo.id, "con materia_id:", grupo.materia_id)
-      const asignacionesGrupo = asignaciones.filter((a) => a.grupo_id === grupo.id)
-      console.log("Asignaciones para este grupo:", asignacionesGrupo.length, asignacionesGrupo)
+    gruposDelNumero.forEach(grupo => {
+        const asignacionesGrupo = asignaciones.filter((a) => a.grupo_id === grupo.id);
+        asignacionesGrupo.forEach(asignacion => {
+            const materia = materias.find((m) => m.id === asignacion.materia_id);
+            if (!materia) return;
 
-      asignacionesGrupo.forEach((asignacion) => {
-        const materia = materias.find((m) => m.id === asignacion.materia_id)
-        if (!materia) {
-          console.warn("No se encontró la materia con id:", asignacion.materia_id)
-          return
-        }
+            const profesor = profesores.find((p) => p.id === materia.profesor_id);
+            const aula = aulas.find((a) => a.id === asignacion.aula_id);
+            
+            const horaInicioNum = parseInt(asignacion.hora_inicio.split(':')[0], 10);
+            const horaFinNum = parseInt(asignacion.hora_fin.split(':')[0], 10);
+            
+            for (let h = horaInicioNum; h < horaFinNum; h++) {
+                const horaActual = `${String(h).padStart(2, '0')}:00`;
+                if (horarioTemp[horaActual] && horarioTemp[horaActual][asignacion.dia]) {
+                    // Evitar duplicados si una materia ya está en esa celda
+                    if (!horarioTemp[horaActual][asignacion.dia].materias.some(m => m.nombre === materia.nombre)) {
+                        horarioTemp[horaActual][asignacion.dia].materias.push({
+                            nombre: materia.nombre,
+                            profesor: profesor?.nombre || "Sin profesor",
+                            aula: aula?.nombre || "Sin aula",
+                            color: "#BAE1FF" // Color base, puedes mejorarlo
+                        });
+                    }
+                }
+            }
+        });
+    });
+    
+    setHorario(horarioTemp);
+}, [selectedGrupo, grupos, asignaciones, materias, profesores, aulas]);
 
-        const profesor = profesores.find((p) => p.id === materia.profesor_id)
-        const aula = aulas.find((a) => a.id === asignacion.aula_id)
-
-        console.log("Procesando asignación:", {
-          dia: asignacion.dia,
-          hora_inicio: asignacion.hora_inicio,
-          hora_fin: asignacion.hora_fin,
-          materia: materia.nombre,
-          profesor: profesor?.nombre || "Sin profesor",
-          aula: aula?.nombre || "Sin aula",
-        })
-
-        const horaInicio = asignacion.hora_inicio
-        const horaFin = asignacion.hora_fin
-        const horaIndex = horas.indexOf(horaInicio)
-        const horasSpan = horas.indexOf(horaFin) - horaIndex
-
-        console.log("Índices de horas:", { horaIndex, horasSpan, horas })
-
-        if (horaIndex === -1) {
-          console.warn("Hora de inicio no encontrada en el array de horas:", horaInicio)
-          return
-        }
-
-        for (let i = 0; i < horasSpan; i++) {
-          const hora = horas[horaIndex + i]
-          if (hora && horarioTemp[hora]) {
-            horarioTemp[hora][asignacion.dia].materias.push({
-              nombre: materia.nombre,
-              profesor: profesor?.nombre || "Sin profesor",
-              aula: aula?.nombre || (asignacion.aula_id === undefined ? "Pendiente" : "Sin aula"),
-              color: getColorForMateria(materia.id),
-            })
-          }
-        }
-      })
-    })
-
-    console.log("Horario generado:", horarioTemp)
-    setHorario(horarioTemp)
+useEffect(() => {
+  // Solo genera el horario si hay datos cargados y un grupo seleccionado.
+  if (grupos.length > 0 && materias.length > 0 && selectedGrupo) {
+      generateHorario();
   }
+}, [selectedGrupo, grupos, materias, asignaciones, profesores, aulas, generateHorario]);
 
   const exportToCSV = () => {
     const gruposDelNumero = grupos.filter((g) => g.numero === selectedGrupo?.numero)
@@ -991,7 +813,7 @@ export default function HorarioGrupo({ selectedPeriod }) {
     <Card className="bg-[#0f172a] text-white border-none">
       <CardContent className="p-2 sm:p-6">
         {/* Tabs para seleccionar el ciclo */}
-        <Tabs defaultValue={activeCycle} onValueChange={setActiveCycle} className="mb-6">
+        <Tabs value={activeCycle} onValueChange={setActiveCycle} className="mb-6">
           <TabsList className="w-full bg-[#1e293b] border-b border-[#334155]">
             <TabsTrigger value="1" className="flex-1 data-[state=active]:bg-[#3b82f6] data-[state=active]:text-white">
               Enero-Abril
@@ -1003,6 +825,7 @@ export default function HorarioGrupo({ selectedPeriod }) {
               Septiembre-Diciembre
             </TabsTrigger>
           </TabsList>
+     
 
           {/* Contenido para todos los tabs */}
           <div className="mt-4">

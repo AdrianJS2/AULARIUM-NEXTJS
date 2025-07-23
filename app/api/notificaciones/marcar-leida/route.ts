@@ -1,33 +1,33 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+// app/api/notificaciones/marcar-leida/route.ts
+// Marca una notificación específica como leída.
 
-// Inicializar el cliente de Supabase con la clave de servicio para evitar restricciones RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || "",
-)
+import { type NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/db";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    // Obtener el ID de la notificación de la URL
-    const url = new URL(request.url)
-    const id = url.searchParams.get("id")
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "ID de notificación no proporcionado" }, { status: 400 })
+      return NextResponse.json({ error: "ID de notificación no proporcionado" }, { status: 400 });
     }
 
-    // Marcar la notificación como leída
-    const { error } = await supabaseAdmin.from("notificaciones").update({ leida: true }).eq("id", id)
+    // Actualiza el estado 'leida' de la notificación.
+    const [result]: [any, any] = await pool.query(
+      "UPDATE notificaciones SET leida = TRUE WHERE id = ?",
+      [id]
+    );
 
-    if (error) {
-      console.error("Error al marcar notificación como leída:", error)
-      return NextResponse.json({ error: "Error al marcar notificación como leída" }, { status: 500 })
+    // Verifica si alguna fila fue afectada para confirmar que la notificación existía.
+    if (result.affectedRows === 0) {
+      return NextResponse.json({ error: "Notificación no encontrada" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Error en el endpoint de marcar como leída:", error)
-    return NextResponse.json({ error: "Error interno del servidor" }, { status: 500 })
+    return NextResponse.json({ success: true });
+
+  } catch (error: any) {
+    console.error("Error en el endpoint de marcar como leída:", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
   }
 }

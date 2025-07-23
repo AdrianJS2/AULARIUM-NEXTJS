@@ -1,86 +1,80 @@
-import { NextResponse } from "next/server"
-import { supabase } from "@/lib/supabase"
-import { isAdmin, getUserRole } from "@/lib/auth"
+// app/api/deshacer-asignacion/route.ts
+// Esta ruta elimina todas las asignaciones para un periodo y usuario/carrera específicos.
 
-export async function POST(request: Request) {
+import { NextResponse } from "next/server";
+import pool from "@/lib/db";
+import { getUserRole, isAdmin } from "@/lib/auth"; // Usamos los helpers refactorizados
+import { type NextRequest } from "next/server";
+
+// NOTA: Esta ruta asumirá que la autenticación se manejará más adelante.
+// Por ahora, se necesita un `userId` simulado o pasado en la solicitud para que funcione.
+// En un entorno real, obtendrías el `userId` de la sesión de NextAuth.
+
+export async function POST(request: NextRequest) {
+  const connection = await pool.getConnection();
   try {
-    const { periodoId } = await request.json()
+    // Simulamos la obtención del ID de usuario de la sesión.
+    // En la Tarea B, esto se reemplazará con la sesión de NextAuth.
+    const mockUserId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"; // Reemplazar con un UUID de usuario válido en tu BD.
 
-    // Verificar autenticación
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { periodoId } = await request.json();
 
-    if (!user) {
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    if (!periodoId) {
+      return NextResponse.json({ error: "Periodo no válido" }, { status: 400 });
     }
 
-    // Verificar si el usuario es admin o tiene permisos
-    const admin = await isAdmin(user.id)
-    const { rol, carrera_id } = await getUserRole(user.id)
+    const { rol, carrera_id } = await getUserRole(mockUserId);
+    const admin = await isAdmin(mockUserId);
 
-    // Determinar la tabla de asignaciones según el periodo
-    let tablaAsignaciones = ""
-    let tablaMaterias = ""
-    switch (periodoId) {
-      case "1":
-        tablaAsignaciones = "asignaciones_enero_abril"
-        tablaMaterias = "materias_enero_abril"
-        break
-      case "2":
-        tablaAsignaciones = "asignaciones_mayo_agosto"
-        tablaMaterias = "materias_mayo_agosto"
-        break
-      case "3":
-        tablaAsignaciones = "asignaciones_septiembre_diciembre"
-        tablaMaterias = "materias_septiembre_diciembre"
-        break
-      default:
-        return NextResponse.json({ error: "Periodo no válido" }, { status: 400 })
-    }
+    const getTableNames = (pId: string) => {
+      switch (pId) {
+        case "1": return { asignaciones: "asignaciones_enero_abril", materias: "materias_enero_abril" };
+        case "2": return { asignaciones: "asignaciones_mayo_agosto", materias: "materias_mayo_agosto" };
+        case "3": return { asignaciones: "asignaciones_septiembre_diciembre", materias: "materias_septiembre_diciembre" };
+        default: throw new Error("Periodo no válido");
+      }
+    };
 
-    // Obtener materias según el rol del usuario
-    let materiasQuery = supabase.from(tablaMaterias).select("id")
+    const tables = getTableNames(periodoId);
+    
+    await connection.beginTransaction();
 
-    // Filtrar materias según el rol del usuario
+    let deleteQuery = `DELETE FROM ${tables.asignaciones} WHERE materia_id IN (SELECT id FROM ${tables.materias} WHERE `;
+    const params: (string | number)[] = [];
+
     if (!admin) {
       if (rol === "coordinador" && carrera_id) {
-        // Coordinador: filtrar por carrera
-        materiasQuery = materiasQuery.eq("carrera_id", carrera_id)
+        deleteQuery += "carrera_id = ?)";
+        params.push(carrera_id);
       } else {
-        // Usuario normal: filtrar por usuario_id
-        materiasQuery = materiasQuery.eq("usuario_id", user.id)
+        deleteQuery += "usuario_id = ?)";
+        params.push(mockUserId);
       }
+    } else {
+      // Si es admin, no se filtra por usuario o carrera, se eliminan todas las del periodo.
+      // La consulta se simplifica para eliminar todo lo del periodo.
+      deleteQuery = `DELETE FROM ${tables.asignaciones}`;
     }
 
-    const { data: materias, error: materiasError } = await materiasQuery
-
-    if (materiasError) {
-      console.error("Error fetching materias:", materiasError)
-      return NextResponse.json({ error: "Error al obtener materias" }, { status: 500 })
+    // Solo ejecutamos la consulta de borrado si no es un admin borrando todo
+    if (params.length > 0 || !admin) {
+        const [result] = await connection.query(deleteQuery, params);
+        console.log(`Filas eliminadas: ${(result as any).affectedRows}`);
+    } else if (admin) {
+        // Lógica para admin borrando todo
+        const [result] = await connection.query(deleteQuery);
+        console.log(`Filas eliminadas por admin: ${(result as any).affectedRows}`);
     }
 
-    if (!materias || materias.length === 0) {
-      return NextResponse.json({ error: "No hay materias disponibles" }, { status: 404 })
-    }
 
-    // Obtener IDs de materias
-    const materiaIds = materias.map((m) => m.id)
+    await connection.commit();
 
-    // Eliminar asignaciones para las materias del usuario
-    const { error: deleteError } = await supabase.from(tablaAsignaciones).delete().in("materia_id", materiaIds)
-
-    if (deleteError) {
-      console.error("Error deleting assignments:", deleteError)
-      return NextResponse.json({ error: "Error al eliminar asignaciones" }, { status: 500 })
-    }
-
-    return NextResponse.json([])
-  } catch (error) {
-    console.error("Error undoing assignments:", error)
-    return NextResponse.json(
-      { error: "Error al deshacer asignaciones: " + (error instanceof Error ? error.message : String(error)) },
-      { status: 500 },
-    )
+    return NextResponse.json({ message: "Asignaciones deshechas correctamente" });
+  } catch (error: any) {
+    await connection.rollback();
+    console.error("Error al deshacer asignaciones:", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
+  } finally {
+    connection.release();
   }
 }

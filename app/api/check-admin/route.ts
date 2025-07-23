@@ -1,39 +1,44 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-import type { NextRequest } from "next/server"
+// app/api/check-admin/route.ts
+// Ruta para verificar si un usuario específico tiene rol de administrador.
 
-// Creamos un cliente de Supabase directamente
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { type NextRequest, NextResponse } from "next/server";
+import pool from "@/lib/db";
 
-// Definimos los roles que tienen acceso administrativo
-const ADMIN_ROLES = ["admin", "director"]
+// Se define el rol de administrador para mantener la lógica centralizada.
+const ADMIN_ROLE = "admin";
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get("userId")
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
 
     if (!userId) {
-      return NextResponse.json({ error: "Se requiere userId" }, { status: 400 })
+      return NextResponse.json({ error: "Se requiere userId" }, { status: 400 });
     }
 
-    const { data, error } = await supabase.from("usuarios").select("rol").eq("id", userId).single()
+    // Ejecutamos la consulta para obtener el rol del usuario.
+    const [rows]: [any[], any] = await pool.query(
+      "SELECT rol FROM usuarios WHERE id = ?",
+      [userId]
+    );
 
-    if (error) {
-      console.error("Error verificando rol de administrador:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    // Verificamos si se encontró el usuario.
+    if (rows.length === 0) {
+      return NextResponse.json({ isAdmin: false, role: null }, { status: 404 });
     }
 
-    console.log("Verificación de admin para userId:", userId, "resultado:", data?.rol === "admin")
+    const user = rows[0];
+    const isAdmin = user.rol === ADMIN_ROLE;
+
+    console.log("Verificación de admin para userId:", userId, "resultado:", isAdmin);
 
     return NextResponse.json({
-      isAdmin: data?.rol === "admin",
-      role: data?.rol,
-    })
+      isAdmin: isAdmin,
+      role: user.rol,
+    });
+
   } catch (error: any) {
-    console.error("Error en check-admin API:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("Error en check-admin API:", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
   }
 }
