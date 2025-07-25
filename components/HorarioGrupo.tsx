@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo,useCallback } from "react"
-import { supabase } from "../lib/supabase"
+
 import { featureFlags } from '@/lib/config';
 
 import { Card, CardContent } from "@/components/ui/card"

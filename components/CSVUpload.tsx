@@ -54,9 +54,9 @@ export function CSVUpload({ onUploadComplete }: { onUploadComplete: () => void }
         throw new Error("Error parsing CSV: " + result.errors[0].message)
       }
 
-      const { data, error: insertError } = await supabase.from("profesores").insert(result.data)
+      
 
-      if (insertError) throw insertError
+      
 
       onUploadComplete()
     } catch (err) {

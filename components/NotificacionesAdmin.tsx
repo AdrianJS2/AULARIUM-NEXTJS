@@ -41,91 +41,91 @@ export default function NotificacionesAdmin() {
     }
   }, [])
 
-  useEffect(() => {
-    const fetchUserId = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (data.session?.user) {
-        setUserId(data.session.user.id)
-      }
-    }
+  // useEffect(() => {
+  //   const fetchUserId = async () => {
+  //     const { data } = await supabase.auth.getSession()
+  //     if (data.session?.user) {
+  //       setUserId(data.session.user.id)
+  //     }
+  //   }
 
-    fetchUserId()
-  }, [])
+  //   fetchUserId()
+  // }, [])
 
-  useEffect(() => {
-    if (!userId) return
+  // useEffect(() => {
+  //   if (!userId) return
 
-    const fetchNotificaciones = async () => {
-      setLoading(true)
-      try {
-        const { data, error } = await supabase
-          .from("notificaciones")
-          .select("*")
-          .eq("destinatario_id", userId)
-          .order("fecha_creacion", { ascending: false })
-          .limit(10)
+  //   const fetchNotificaciones = async () => {
+  //     setLoading(true)
+  //     try {
+  //       const { data, error } = await supabase
+  //         .from("notificaciones")
+  //         .select("*")
+  //         .eq("destinatario_id", userId)
+  //         .order("fecha_creacion", { ascending: false })
+  //         .limit(10)
 
-        if (error) throw error
+  //       if (error) throw error
 
-        setNotificaciones(data || [])
-      } catch (error) {
-        console.error("Error fetching notifications:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
+  //       setNotificaciones(data || [])
+  //     } catch (error) {
+  //       console.error("Error fetching notifications:", error)
+  //     } finally {
+  //       setLoading(false)
+  //     }
+  //   }
 
-    fetchNotificaciones()
+  //   fetchNotificaciones()
 
-    // Set up real-time subscription
-    const channel = supabase
-      .channel("notificaciones-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notificaciones",
-          filter: `destinatario_id=eq.${userId}`,
-        },
-        (payload) => {
-          console.log("Cambio en notificaciones detectado:", payload)
-          fetchNotificaciones()
-        },
-      )
-      .subscribe()
+  //   // Set up real-time subscription
+  //   const channel = supabase
+  //     .channel("notificaciones-changes")
+  //     .on(
+  //       "postgres_changes",
+  //       {
+  //         event: "*",
+  //         schema: "public",
+  //         table: "notificaciones",
+  //         filter: `destinatario_id=eq.${userId}`,
+  //       },
+  //       (payload) => {
+  //         console.log("Cambio en notificaciones detectado:", payload)
+  //         fetchNotificaciones()
+  //       },
+  //     )
+  //     .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [userId])
+  //   return () => {
+  //     supabase.removeChannel(channel)
+  //   }
+  // }, [userId])
 
-  const marcarComoLeida = async (id: number) => {
-    try {
-      // Obtener el usuario actual para asegurarnos de que estamos autenticados
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+  // const marcarComoLeida = async (id: number) => {
+  //   try {
+  //     // Obtener el usuario actual para asegurarnos de que estamos autenticados
+  //     const {
+  //       data: { user },
+  //     } = await supabase.auth.getUser()
 
-      if (!user) {
-        console.error("Usuario no autenticado")
-        return
-      }
+  //     if (!user) {
+  //       console.error("Usuario no autenticado")
+  //       return
+  //     }
 
-      // Actualizar directamente con el cliente de Supabase
-      const { error } = await supabase.from("notificaciones").update({ leida: true }).eq("id", id)
+  //     // Actualizar directamente con el cliente de Supabase
+  //     const { error } = await supabase.from("notificaciones").update({ leida: true }).eq("id", id)
 
-      if (error) {
-        console.error("Error marking notification as read:", error)
-        return
-      }
+  //     if (error) {
+  //       console.error("Error marking notification as read:", error)
+  //       return
+  //     }
 
-      // Actualizar el estado local
-      setNotificaciones(notificaciones.map((notif) => (notif.id === id ? { ...notif, leida: true } : notif)))
-    } catch (error) {
-      console.error("Error marking notification as read:", error)
-    }
-  }
+  //     // Actualizar el estado local
+  //     setNotificaciones(notificaciones.map((notif) => (notif.id === id ? { ...notif, leida: true } : notif)))
+  //   } catch (error) {
+  //     console.error("Error marking notification as read:", error)
+  //   }
+  // }
 
   const marcarComoResuelta = async (notificacion: Notificacion) => {
     try {

@@ -116,52 +116,52 @@ const menuItems = [
 const ADMIN_ROLES = ["admin", "administrador"]
 
 // Declare getUserRole function
-async function getUserRole(userId: string) {
-  try {
-    // Intentamos obtener el rol directamente
-    const { data, error } = await supabase.from("usuarios").select("carrera_nombre, rol").eq("id", userId).maybeSingle()
+// async function getUserRole(userId: string) {
+//   try {
+//     // Intentamos obtener el rol directamente
+//     const { data, error } = await supabase.from("usuarios").select("carrera_nombre, rol").eq("id", userId).maybeSingle()
 
-    if (error) {
-      console.error("Error fetching user role:", error)
-      return { carrera_nombre: null, rol: null }
-    }
+//     if (error) {
+//       console.error("Error fetching user role:", error)
+//       return { carrera_nombre: null, rol: null }
+//     }
 
-    // Si no hay datos, intentamos crear el usuario
-    if (!data) {
-      console.log("Usuario no encontrado en sidebar, intentando crear registro...")
-      const { data: sessionData } = await supabase.auth.getSession()
-      const userEmail = sessionData?.session?.user?.email || "unknown@email.com"
+//     // Si no hay datos, intentamos crear el usuario
+//     if (!data) {
+//       console.log("Usuario no encontrado en sidebar, intentando crear registro...")
+//       const { data: sessionData } = await supabase.auth.getSession()
+//       const userEmail = sessionData?.session?.user?.email || "unknown@email.com"
 
-      // Usamos upsert para evitar errores de clave duplicada
-      const { error: upsertError } = await supabase.from("usuarios").upsert(
-        [
-          {
-            id: userId,
-            email: userEmail,
-            rol: "usuario",
-            nombre: sessionData?.session?.user?.user_metadata?.full_name || "Usuario",
-          },
-        ],
-        {
-          onConflict: "id",
-          ignoreDuplicates: false,
-        },
-      )
+//       // Usamos upsert para evitar errores de clave duplicada
+//       const { error: upsertError } = await supabase.from("usuarios").upsert(
+//         [
+//           {
+//             id: userId,
+//             email: userEmail,
+//             rol: "usuario",
+//             nombre: sessionData?.session?.user?.user_metadata?.full_name || "Usuario",
+//           },
+//         ],
+//         {
+//           onConflict: "id",
+//           ignoreDuplicates: false,
+//         },
+//       )
 
-      if (upsertError) {
-        console.error("Error creando usuario:", upsertError)
-        return { carrera_nombre: null, rol: "usuario" }
-      }
+//       if (upsertError) {
+//         console.error("Error creando usuario:", upsertError)
+//         return { carrera_nombre: null, rol: "usuario" }
+//       }
 
-      return { carrera_nombre: null, rol: "usuario" }
-    }
+//       return { carrera_nombre: null, rol: "usuario" }
+//     }
 
-    return data || { carrera_nombre: null, rol: null }
-  } catch (error) {
-    console.error("Error fetching user role:", error)
-    return { carrera_nombre: null, rol: null }
-  }
-}
+//     return data || { carrera_nombre: null, rol: null }
+//   } catch (error) {
+//     console.error("Error fetching user role:", error)
+//     return { carrera_nombre: null, rol: null }
+//   }
+// }
 
 // Declare viewMode variable
 if (typeof window !== "undefined") {
@@ -195,90 +195,90 @@ export function Sidebar({
   const { isAdmin, userRole, logout } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
   // Add this effect to check user role on component mount
-  useEffect(() => {
-    async function checkUserRole() {
-      try {
-        // Primero intentamos obtener el rol del localStorage
-        if (typeof window !== "undefined") {
-          const storedRole = window.localStorage.getItem("userRoleState")
-          if (storedRole) {
-            console.log("User role from localStorage:", storedRole)
-            setUserRoleState(storedRole)
-            return
-          }
-        }
+  // useEffect(() => {
+  //   async function checkUserRole() {
+  //     try {
+  //       // Primero intentamos obtener el rol del localStorage
+  //       if (typeof window !== "undefined") {
+  //         const storedRole = window.localStorage.getItem("userRoleState")
+  //         if (storedRole) {
+  //           console.log("User role from localStorage:", storedRole)
+  //           setUserRoleState(storedRole)
+  //           return
+  //         }
+  //       }
 
-        // Si no hay rol en localStorage, lo obtenemos de la base de datos
-        const { data } = await supabase.auth.getSession()
-        if (data.session?.user) {
-          const { data: userData, error } = await supabase
-            .from("usuarios")
-            .select("rol")
-            .eq("id", data.session.user.id)
-            .single()
+  //       // Si no hay rol en localStorage, lo obtenemos de la base de datos
+  //       const { data } = await supabase.auth.getSession()
+  //       if (data.session?.user) {
+  //         const { data: userData, error } = await supabase
+  //           .from("usuarios")
+  //           .select("rol")
+  //           .eq("id", data.session.user.id)
+  //           .single()
 
-          if (userData) {
-            console.log("User role from database:", userData.rol)
-            setUserRoleState(userData.rol)
+  //         if (userData) {
+  //           console.log("User role from database:", userData.rol)
+  //           setUserRoleState(userData.rol)
 
-            // Store the role in localStorage for cross-component access
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem("userRoleState", userData.rol)
-              console.log("Stored user role in localStorage:", userData.rol)
+  //           // Store the role in localStorage for cross-component access
+  //           if (typeof window !== "undefined") {
+  //             window.localStorage.setItem("userRoleState", userData.rol)
+  //             console.log("Stored user role in localStorage:", userData.rol)
 
-              // If role is an admin role, set force_admin_access flag
-              if (ADMIN_ROLES.includes(userData.rol.toLowerCase())) {
-                window.localStorage.setItem("force_admin_access", "true")
-                console.log("Setting force_admin_access flag for admin user")
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error checking user role:", error)
-      }
-    }
+  //             // If role is an admin role, set force_admin_access flag
+  //             if (ADMIN_ROLES.includes(userData.rol.toLowerCase())) {
+  //               window.localStorage.setItem("force_admin_access", "true")
+  //               console.log("Setting force_admin_access flag for admin user")
+  //             }
+  //           }
+  //         }
+  //       }
+  //     } catch (error) {
+  //       console.error("Error checking user role:", error)
+  //     }
+  //   }
 
-    checkUserRole()
-  }, [])
+  //   checkUserRole()
+  // }, [])
 
   // Añadir este useEffect para cargar los periodos académicos
-  useEffect(() => {
-    const loadPeriodos = async () => {
-      setIsLoading(true)
-      try {
-        // Definir los periodos predeterminados
-        const defaultPeriodos = [
-          { id: 1, nombre: "Enero-Abril", fecha_inicio: "2025-01-01", fecha_fin: "2025-04-30" },
-          { id: 2, nombre: "Mayo-Agosto", fecha_inicio: "2025-05-01", fecha_fin: "2025-08-31" },
-          { id: 3, nombre: "Septiembre-Diciembre", fecha_inicio: "2025-09-01", fecha_fin: "2025-12-31" },
-        ]
+  // useEffect(() => {
+  //   const loadPeriodos = async () => {
+  //     setIsLoading(true)
+  //     try {
+  //       // Definir los periodos predeterminados
+  //       const defaultPeriodos = [
+  //         { id: 1, nombre: "Enero-Abril", fecha_inicio: "2025-01-01", fecha_fin: "2025-04-30" },
+  //         { id: 2, nombre: "Mayo-Agosto", fecha_inicio: "2025-05-01", fecha_fin: "2025-08-31" },
+  //         { id: 3, nombre: "Septiembre-Diciembre", fecha_inicio: "2025-09-01", fecha_fin: "2025-12-31" },
+  //       ]
 
-        // Intentar cargar periodos desde la base de datos
-        const { data, error } = await supabase.from("periodos").select("*")
+  //       // Intentar cargar periodos desde la base de datos
+  //       // const { data, error } = await supabase.from("periodos").select("*")
 
-        if (error || !data || data.length === 0) {
-          console.log("Usando periodos predeterminados")
-          setPeriodos(defaultPeriodos)
-        } else {
-          console.log("Periodos cargados desde la base de datos:", data)
-          setPeriodos(data)
-        }
-      } catch (error) {
-        console.error("Error cargando periodos:", error)
-        // En caso de error, usar periodos predeterminados
-        setPeriodos([
-          { id: 1, nombre: "Enero-Abril", fecha_inicio: "2025-01-01", fecha_fin: "2025-04-30" },
-          { id: 2, nombre: "Mayo-Agosto", fecha_inicio: "2025-05-01", fecha_fin: "2025-08-31" },
-          { id: 3, nombre: "Septiembre-Diciembre", fecha_inicio: "2025-09-01", fecha_fin: "2025-12-31" },
-        ])
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  //       if (error || !data || data.length === 0) {
+  //         console.log("Usando periodos predeterminados")
+  //         setPeriodos(defaultPeriodos)
+  //       } else {
+  //         console.log("Periodos cargados desde la base de datos:", data)
+  //         setPeriodos(data)
+  //       }
+  //     } catch (error) {
+  //       console.error("Error cargando periodos:", error)
+  //       // En caso de error, usar periodos predeterminados
+  //       setPeriodos([
+  //         { id: 1, nombre: "Enero-Abril", fecha_inicio: "2025-01-01", fecha_fin: "2025-04-30" },
+  //         { id: 2, nombre: "Mayo-Agosto", fecha_inicio: "2025-05-01", fecha_fin: "2025-08-31" },
+  //         { id: 3, nombre: "Septiembre-Diciembre", fecha_inicio: "2025-09-01", fecha_fin: "2025-12-31" },
+  //       ])
+  //     } finally {
+  //       setIsLoading(false)
+  //     }
+  //   }
 
-    loadPeriodos()
-  }, [])
+  //   loadPeriodos()
+  // }, [])
 
   // Render the admin button directly in the sidebar
   const renderAdminButton = () => {
