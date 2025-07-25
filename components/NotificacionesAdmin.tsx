@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { Bell, Check, Clock, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { supabase } from "@/lib/supabaseClient"
+
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/components/ui/use-toast"
 

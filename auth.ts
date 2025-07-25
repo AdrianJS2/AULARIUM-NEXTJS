@@ -1,67 +1,51 @@
-// Archivo: auth.ts (en la raíz de tu proyecto)
+
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import  pool  from "@/lib/db"; // Asegúrate que la ruta a tu conexión de BD sea correcta
+import pool from "@/lib/db"; // Usa 'pool' con exportación por defecto
 import bcrypt from "bcrypt";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
-      // 'credentials' es un nombre por defecto, puedes dejarlo así.
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
       async authorize(credentials) {
         if (!credentials?.email || !credentials.password) {
           return null;
         }
 
-        // Busca al usuario en tu base de datos
         const [rows]: any = await pool.query(
           "SELECT id, email, rol, nombre, password, email_verificado FROM usuarios WHERE email = ?",
           [credentials.email]
         );
 
-        if (rows.length === 0) {
-          return null; // Usuario no encontrado
-        }
-
+        if (rows.length === 0) return null;
         const user = rows[0];
 
-        // Verifica si el correo ha sido confirmado
         if (!user.email_verificado) {
-          // Puedes lanzar un error personalizado aquí para manejarlo en el frontend
+          // Lanza un error personalizado que se puede atrapar en el frontend
           throw new Error("EmailNotVerified");
         }
 
-        // Compara la contraseña
         const passwordMatch = await bcrypt.compare(
           credentials.password as string,
           user.password
         );
 
         if (passwordMatch) {
-          // Si todo es correcto, devuelve el objeto del usuario.
-          // Este objeto se guardará en el token (JWT).
           return {
             id: user.id,
             name: user.nombre,
             email: user.email,
-            role: user.rol, // Puedes añadir más campos si los necesitas en la sesión
+            role: user.rol,
           };
         }
 
-        // Si la contraseña no coincide, devuelve null
         return null;
       },
     }),
   ],
-  // Aquí puedes añadir más configuraciones, como las páginas de login/error
   pages: {
     signIn: '/', // Tu página de login es la raíz
   },
-  // Callbacks para manejar el JWT y la sesión
   callbacks: {
     async jwt({ token, user }) {
       if (user) {

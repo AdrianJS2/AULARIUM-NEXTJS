@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { supabase } from "@/lib/supabase"
+
 import { featureFlags } from '@/lib/config';
 import { toast } from "@/components/ui/use-toast"
 import { Clock, Calendar, CheckCircle2, XCircle } from "lucide-react"
@@ -57,9 +57,7 @@ useEffect(() => {
         if (!response.ok) throw new Error("No se pudo cargar desde la API");
         profesor = await response.json();
       } else {
-        const { data, error } = await supabase.from("profesores").select("nombre, disponibilidad").eq("id", profesorId).single();
-        if (error) throw error;
-        profesor = data;
+       
       }
 
       setNombreProfesor(profesor?.nombre || "");
@@ -170,8 +168,7 @@ useEffect(() => {
         });
         if (!response.ok) throw new Error("Error al guardar en la API");
       } else {
-        const { error } = await supabase.from("profesores").update({ disponibilidad }).eq("id", profesorId);
-        if (error) throw error;
+       
       }
   
       toast({ title: "Éxito", description: "Disponibilidad guardada correctamente." });

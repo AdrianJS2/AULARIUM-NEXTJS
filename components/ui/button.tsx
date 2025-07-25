@@ -3,8 +3,9 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/auth" // ✅ 1. Importamos el hook useAuth
+import { useToast } from "@/components/ui/use-toast"
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
@@ -40,72 +41,42 @@ export interface ButtonProps
     message: string
     description?: string
   }
-  adminOnly?: boolean // Nueva prop para indicar si el botón es solo para administradores
+  adminOnly?: boolean
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, onClick, showConfirmation, adminOnly = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
-    const [isAdmin, setIsAdmin] = React.useState(false)
+    const { toast } = useToast()
+    
+    // ✅ 2. Obtenemos el usuario del contexto global, que ya está cargado
+    const { user } = useAuth()
 
-    // Verificar si el usuario es administrador
-    React.useEffect(() => {
-      const checkAdminStatus = async () => {
-        try {
-          // Importar supabase de manera dinámica
-          const { supabase } = await import("@/lib/supabase")
-          const { data: sessionData } = await supabase.auth.getSession()
+    // ✅ 3. Determinamos si el usuario es admin de forma sencilla y eficiente
+    const isAdmin = user?.rol === 'admin'
 
-          if (sessionData?.session?.user) {
-            const { data } = await supabase
-              .from("usuarios")
-              .select("rol")
-              .eq("id", sessionData.session.user.id)
-              .single()
+    // ✅ 4. ¡Hemos eliminado por completo el `useEffect` que llamaba a Supabase!
 
-            setIsAdmin(data?.rol === "admin" || data?.rol === "administrador")
-          }
-        } catch (error) {
-          console.error("Error checking admin status:", error)
-          setIsAdmin(false)
-        }
-      }
-
-      checkAdminStatus()
-    }, [])
-
-    // Mejorar el manejo de eventos de clic
     const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-      // Si el botón es solo para administradores y el usuario no es administrador, no hacer nada
+      // Si el botón es solo para administradores y el usuario no lo es, detenemos la acción.
       if (adminOnly && !isAdmin) {
         event.preventDefault()
         return
       }
 
-      // Asegurarse de que el evento de clic se propague correctamente
       if (onClick) {
-        console.log("Button clicked:", props.children)
         onClick(event)
       }
 
-      // Mostrar mensaje de confirmación si se proporciona
       if (showConfirmation) {
-        // Importar toast de manera dinámica para evitar problemas de SSR
-        import("@/components/ui/use-toast")
-          .then(({ toast }) => {
-            toast({
-              title: showConfirmation.message,
-              description: showConfirmation.description || "Recibirás una notificación cuando se procese tu solicitud.",
-              variant: "default",
-            })
-          })
-          .catch((err) => {
-            console.error("Error showing confirmation toast:", err)
-          })
+        toast({
+            title: showConfirmation.message,
+            description: showConfirmation.description || "Tu acción ha sido registrada.",
+        });
       }
     }
 
-    // Si el botón es solo para administradores y el usuario no es administrador, no renderizar nada
+    // Si el botón es solo para administradores y el usuario no es admin, no se renderiza.
     if (adminOnly && !isAdmin) {
       return null
     }
@@ -115,30 +86,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         data-variant={variant}
-        onClick={(e) => {
-          // Prevenir comportamiento por defecto solo si es necesario
-          if (adminOnly && !isAdmin) {
-            e.preventDefault()
-            return
-          }
-
-          // Llamar directamente a la función onClick proporcionada
-          if (onClick) {
-            onClick(e)
-          }
-
-          // Mostrar confirmación si es necesario
-          if (showConfirmation) {
-            import("@/components/ui/use-toast").then(({ toast }) => {
-              toast({
-                title: showConfirmation.message,
-                description:
-                  showConfirmation.description || "Recibirás una notificación cuando se procese tu solicitud.",
-                variant: "default",
-              })
-            })
-          }
-        }}
+        onClick={handleClick}
         {...props}
       />
     )

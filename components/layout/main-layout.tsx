@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Menu } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/lib/auth"
-import { supabase } from "@/lib/supabaseClient"
+
 import NotificacionesAdmin from "@/components/NotificacionesAdmin"
 
 interface MainLayoutProps {

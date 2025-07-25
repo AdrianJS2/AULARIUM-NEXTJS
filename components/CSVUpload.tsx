@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Upload, AlertTriangle } from "lucide-react"
 import Papa from "papaparse"
-import { supabase } from "@/lib/supabase"
 
 interface Professor {
   nombre: string

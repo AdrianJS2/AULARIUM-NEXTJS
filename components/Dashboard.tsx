@@ -5,7 +5,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Users, BookOpen, School, Calendar, TrendingUp, BarChart3, PieChart, Activity, User } from "lucide-react"
-import { MigrationStatus } from './MigrationStatus';
+
 import { useAuth } from "@/lib/auth";// Se usa el hook para la info del usuario
 
 interface DashboardProps {
@@ -68,110 +68,16 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
     fetchStats();
   }, [fetchStats]);
 
-  const fetchRecentActivity = async (userId: string | null) => {
-    if (!userId || !selectedPeriod) return
 
-    const tables = getTableNamesByPeriod(selectedPeriod)
 
-    try {
-      // Get user's recent materias (last 5)
-      const { data: recentMaterias } = await supabase
-        .from(tables.materias)
-        .select("nombre, created_at")
-        .eq("usuario_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(5)
 
-      // Format the activity data
-      const activities = (recentMaterias || []).map((materia) => ({
-        type: "materia",
-        name: materia.nombre,
-        date: new Date(materia.created_at).toLocaleDateString(),
-        action: "creada",
-      }))
-
-      setRecentActivity(activities)
-    } catch (error) {
-      console.error("Error fetching recent activity:", error)
-    }
-  }
-
-  const fetchPeriodoNombre = async () => {
-    try {
-      const { data, error } = await supabase.from("periodos").select("nombre").eq("id", selectedPeriod).single()
-
-      if (error) throw error
-      if (data) setPeriodoNombre(data.nombre)
-    } catch (error) {
-      console.error("Error fetching periodo:", error)
-    }
-  }
 
 
 
   
 
-  const fetchDistribucionTurnos = async () => {
-    try {
-      if (!selectedPeriod) return
+ 
 
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      const { data, error } = await supabase.from(tables.grupos).select("turno")
-
-      if (error) throw error
-
-      const mañana = data?.filter((g) => g.turno === "MAÑANA").length || 0
-      const tarde = data?.filter((g) => g.turno === "TARDE").length || 0
-
-      setDistribucionTurnos({ mañana, tarde })
-    } catch (error) {
-      console.error("Error fetching turnos:", error)
-    }
-  }
-
-  const fetchPersonalDistribucionTurnos = async (materiaIds: number[]) => {
-    try {
-      if (!selectedPeriod || materiaIds.length === 0) return
-
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      const { data, error } = await supabase.from(tables.grupos).select("turno").in("materia_id", materiaIds)
-
-      if (error) throw error
-
-      const mañana = data?.filter((g) => g.turno === "MAÑANA").length || 0
-      const tarde = data?.filter((g) => g.turno === "TARDE").length || 0
-
-      setDistribucionTurnos({ mañana, tarde })
-    } catch (error) {
-      console.error("Error fetching personal turnos:", error)
-    }
-  }
-
-  const fetchDistribucionDias = async () => {
-    try {
-      if (!selectedPeriod) return
-
-      const tables = getTableNamesByPeriod(selectedPeriod)
-
-      const { data, error } = await supabase.from(tables.asignaciones).select("dia")
-
-      if (error) throw error
-
-      const distribucion = {
-        Lunes: data?.filter((a) => a.dia === "Lunes").length || 0,
-        Martes: data?.filter((a) => a.dia === "Martes").length || 0,
-        Miércoles: data?.filter((a) => a.dia === "Miércoles").length || 0,
-        Jueves: data?.filter((a) => a.dia === "Jueves").length || 0,
-        Viernes: data?.filter((a) => a.dia === "Viernes").length || 0,
-      }
-
-      setDistribucionDias(distribucion)
-    } catch (error) {
-      console.error("Error fetching distribución por días:", error)
-    }
-  }
 
 
   const getTableNamesByPeriod = (periodId: string) => {
@@ -531,7 +437,7 @@ export default function Dashboard({ selectedPeriod, onNavigate }: DashboardProps
             </CardContent>
           </Card>
         </div>
-          {isAdmin && <MigrationStatus />}
+       
       </div>
     )
   } else {

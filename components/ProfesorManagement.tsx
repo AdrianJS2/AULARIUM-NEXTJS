@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useCallback } from "react"
-import { supabase } from "@/lib/supabase"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -170,63 +170,6 @@ export default function ProfesorManagement() {
     return false
   }, [])
 
-  // Función para obtener datos del usuario y verificar si es administrador
-  const fetchUserData = useCallback(async () => {
-    try {
-      // Primero intentar obtener el rol desde localStorage para evitar consultas innecesarias
-      if (checkAdminFromLocalStorage()) {
-        return
-      }
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (user) {
-        setUser(user)
-        setCurrentUserId(user.id)
-
-        // Consulta directa a la tabla usuarios para obtener el rol
-        const { data, error } = await supabase.from("usuarios").select("rol").eq("id", user.id).single()
-
-        if (!error && data) {
-          const rol = data.rol.toLowerCase().trim()
-          console.log("Rol de usuario encontrado:", rol)
-
-          setUserRole(rol)
-          setIsUserAdmin(rol === "admin")
-          setDebugInfo(`Usuario ID: ${user.id}, Rol: ${rol}`)
-
-          // Guardar en localStorage para futuras visitas
-          if (typeof window !== "undefined") {
-            localStorage.setItem("userRole", rol)
-          }
-        } else {
-          console.log("No se encontró rol, estableciendo rol por defecto")
-          setUserRole("usuario")
-          setDebugInfo(`Usuario ID: ${user.id}, Rol: No encontrado (usando 'usuario' por defecto)`)
-        }
-      }
-    } catch (error) {
-      console.error("Error al obtener datos del usuario:", error)
-    }
-  }, [checkAdminFromLocalStorage])
-
-  // Función para verificar si la tabla profesor_usuario existe
-  const checkTableExists = useCallback(async () => {
-    try {
-      const { error } = await supabase.from("profesor_usuario").select("*", { count: "exact", head: true })
-
-      const exists = !error
-      console.log(exists ? "Tabla profesor_usuario encontrada" : "Error al verificar tabla profesor_usuario")
-      setIsTableCreated(exists)
-      return exists
-    } catch (error) {
-      console.error("Error verificando tabla:", error)
-      setIsTableCreated(false)
-      return false
-    }
-  }, [])
 
   // Función para cargar profesores
   const fetchProfesores = useCallback(async () => {

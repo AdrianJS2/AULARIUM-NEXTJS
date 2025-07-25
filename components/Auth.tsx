@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
-import { supabase, fetchWithRetry } from "@/lib/supabase"
+
 import { useAuth } from "@/lib/auth"; 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -168,40 +168,6 @@ const handleRegister = async () => {
       description: "Revisa tu correo para activar tu cuenta.",
   });
 };
-  // Actualizar la función handleSignUp para manejar mejor los errores
-  // const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
-  //   e.preventDefault()
-  //   setLoading(true)
-  //   setError(null)
-
-  //   try {
-  //     const { data, error } = await fetchWithRetry(async () => {
-  //       return await supabase.auth.signUp({
-  //         email,
-  //         password,
-  //       })
-  //     })
-
-  //     if (error) throw error
-
-  //     toast({
-  //       title: "Registro exitoso",
-  //       description: "Por favor, verifica tu email para completar el registro.",
-  //     })
-
-  //     setMessage("Revisa tu correo electrónico para confirmar tu cuenta")
-  //   } catch (error: any) {
-  //     console.error("Error during signup:", error)
-  //     if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
-  //       setError("Error de conexión. Verifica tu conexión a internet e intenta nuevamente.")
-  //     } else {
-  //       setError(error.error_description || error.message || "Error al registrarse")
-  //     }
-  //   } finally {
-  //     setLoading(false)
-  //   }
-  // }
-
   const handleAuth = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
