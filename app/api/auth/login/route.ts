@@ -49,13 +49,24 @@ export async function POST(req: Request) {
     );
 
     // Guardamos el token en una cookie HttpOnly
-    cookies().set('authToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24, // 1 día
-      path: '/',
-    });
+
+    // cookies().set('authToken', token, {
+    //   httpOnly: true,
+    //   secure: process.env.NODE_ENV === 'production',
+    //   sameSite: 'strict',
+    //   maxAge: 60 * 60 * 24, // 1 día
+    //   path: '/',
+    // });
+    // Versión temporal para HTTP (sin Secure)
+const isHttps = process.env.NEXTAUTH_URL?.startsWith('https');
+
+cookies().set('authToken', token, {
+  httpOnly: true,
+  secure: Boolean(isHttps), // solo true si usas HTTPS
+  sameSite: 'lax',          // menos estricto que 'strict'
+  path: '/',
+  maxAge: 60 * 60 * 24,     // 1 día
+});
 
     return NextResponse.json({ message: "Inicio de sesión exitoso." });
 

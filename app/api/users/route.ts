@@ -1,22 +1,31 @@
-// app/api/users/route.ts
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcrypt";
 import { v4 as uuidv4 } from 'uuid';
 import { type NextRequest } from "next/server";
-import { auth } from "@/auth"; // ✅ 1. Importa la nueva función 'auth'
 
 const SALT_ROUNDS = 10;
 
+// --- MANEJADOR GET para obtener todos los usuarios ---
+export async function GET(request: NextRequest) {
+  // Aquí podrías añadir una verificación de rol si no quieres que cualquiera vea los usuarios
+  try {
+    // Unimos las tablas usuarios y carreras para obtener el nombre de la carrera
+    const [rows] = await pool.query(
+      `SELECT u.id, u.nombre, u.email, u.rol, u.carrera_id, c.nombre as carrera_nombre 
+       FROM usuarios u 
+       LEFT JOIN carreras c ON u.carrera_id = c.id
+       ORDER BY u.nombre ASC`
+    );
+    return NextResponse.json({ users: rows });
+  } catch (error: any) {
+    console.error("Error al obtener usuarios:", error);
+    return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
+  }
+}
+
 // --- MANEJADOR POST para crear un nuevo usuario ---
 export async function POST(request: NextRequest) {
-  // ✅ 2. Obtiene la sesión y verifica si el usuario es administrador
-  const session = await auth();
-  // @ts-ignore
-  if (session?.user?.role !== 'admin') {
-    return NextResponse.json({ error: "Acceso denegado. Se requiere rol de administrador." }, { status: 403 });
-  }
-
   const connection = await pool.getConnection();
   try {
     const { email, nombre, rol, password } = await request.json();
@@ -48,15 +57,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// --- MANEJADOR PUT para actualizar un usuario ---
+export async function PUT(request: NextRequest) {
+    const connection = await pool.getConnection();
+    try {
+        const { id, nombre, rol } = await request.json();
+
+        if (!id || !nombre || !rol) {
+            return NextResponse.json({ error: "Faltan campos obligatorios para actualizar" }, { status: 400 });
+        }
+        
+        const [result]: [any, any] = await connection.query(
+            "UPDATE usuarios SET nombre = ?, rol = ? WHERE id = ?",
+            [nombre, rol, id]
+        );
+
+        if (result.affectedRows === 0) {
+            return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
+        }
+
+        return NextResponse.json({ success: true, message: "Usuario actualizado correctamente." });
+
+    } catch (error: any) {
+        console.error("Error en la actualización de usuario:", error);
+        return NextResponse.json({ error: "Error interno del servidor: " + error.message }, { status: 500 });
+    } finally {
+        connection.release();
+    }
+}
+
+
 // --- MANEJADOR DELETE para eliminar un usuario ---
 export async function DELETE(request: NextRequest) {
-  // ✅ 3. Obtiene la sesión y verifica si el usuario es administrador
-  const session = await auth();
-  // @ts-ignore
-  if (session?.user?.role !== 'admin') {
-    return NextResponse.json({ error: "Acceso denegado. Se requiere rol de administrador." }, { status: 403 });
-  }
-
   const connection = await pool.getConnection();
   try {
     const { searchParams } = new URL(request.url);
@@ -64,12 +96,6 @@ export async function DELETE(request: NextRequest) {
 
     if (!userIdToDelete) {
       return NextResponse.json({ error: "ID de usuario requerido" }, { status: 400 });
-    }
-
-    // Prevenir que un admin se elimine a sí mismo
-    // @ts-ignore
-    if (userIdToDelete === session.user.id) {
-      return NextResponse.json({ error: "No puedes eliminar tu propia cuenta de administrador." }, { status: 403 });
     }
 
     const [result]: [any, any] = await connection.query("DELETE FROM usuarios WHERE id = ?", [userIdToDelete]);

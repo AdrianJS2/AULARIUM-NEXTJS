@@ -1,4 +1,4 @@
-// RUTA: app/api/auth/change-password/route.ts
+
 
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
@@ -6,17 +6,17 @@ import jwt from 'jsonwebtoken';
 import pool from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
-// Define the shape of the JWT payload
+
 interface TokenPayload {
     id: string;
 }
 
-// Ensure this route is always dynamic
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
     try {
-        // 1. Get user ID from session token
+       
         const token = cookies().get('authToken')?.value;
         if (!token) {
             return NextResponse.json({ error: 'No autorizado: sesión no encontrada.' }, { status: 401 });

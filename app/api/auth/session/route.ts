@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 import pool from '@/lib/db'; // Asegúrate de que la importación sea la correcta para tu configuración
@@ -9,16 +9,17 @@ interface TokenPayload {
   [key: string]: any;
 }
 
-// ✅ LA CORRECCIÓN MÁS IMPORTANTE:
 // Estas dos líneas fuerzan a la ruta a no usar ningún tipo de caché y a
-// ejecutarse en el servidor en cada petición. Esto resuelve el error de las cookies.
+// ejecutarse en el servidor en cada petición. Esto es correcto.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+// ✅ CORRECCIÓN: La función GET ahora recibe el objeto `request`.
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const token = cookieStore.get('authToken')?.value;
+    // ✅ CORRECCIÓN: Leemos la cookie directamente del objeto `request`.
+    // Esto es más directo y soluciona el error que estabas viendo.
+    const token = request.cookies.get('authToken')?.value;
 
     if (!token) {
       return NextResponse.json({ error: 'No autorizado: Falta el token.' }, { status: 401 });
