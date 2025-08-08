@@ -155,7 +155,7 @@ export default function ProfesorManagement() {
   const [showDisponibilidadDialog, setShowDisponibilidadDialog] = useState(false)
   const [selectedProfesorForDisponibilidad, setSelectedProfesorForDisponibilidad] = useState<Profesor | null>(null)
   const [viewMode, setViewMode] = useState(true) // Nuevo estado para controlar el modo de visualización
-  const { user, isAdmin, loading: authLoading } = useAuth() // Usar useAuth para obtener el estado de autenticación
+   // Usar useAuth para obtener el estado de autenticación
 
   // Función para verificar si el usuario es administrador usando localStorage
   const checkAdminFromLocalStorage = useCallback(() => {
@@ -173,39 +173,27 @@ export default function ProfesorManagement() {
 
 
   // Función para cargar profesores
-  const fetchProfesores = useCallback(async () => {
-    // No hacer nada hasta que la sesión del usuario esté confirmada.
-    if (authLoading) return;
+  const { user, isAdmin, loading: authLoading } = useAuth()
 
+  // 🔹 CAMBIO: Ahora `fetchProfesores` siempre usa tu API MySQL
+  const fetchProfesores = useCallback(async () => {
+    if (authLoading) return
     setIsLoading(true)
     setError(null)
-
     try {
       const response = await fetch('/api/profesores')
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Error al cargar profesores desde la API')
-      }
+      if (!response.ok) throw new Error('Error al cargar profesores')
       const data = await response.json()
       setProfesores(data || [])
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al cargar los profesores"
-      console.error("Error fetching profesores:", error)
-      setError(message)
-      toast({
-        title: "Error de Carga",
-        description: message,
-        variant: "destructive",
-      })
+      setError(error instanceof Error ? error.message : "Error desconocido")
+      toast({ title: "Error de Carga", description: String(error), variant: "destructive" })
     } finally {
       setIsLoading(false)
     }
   }, [authLoading])
 
-  // Efecto para inicializar datos al montar el componente
-  useEffect(() => {
-    fetchProfesores()
-  }, [fetchProfesores])
+  useEffect(() => { fetchProfesores() }, [fetchProfesores])
 
 
   // Efecto para recargar profesores cuando cambia el rol o usuario
@@ -216,162 +204,72 @@ export default function ProfesorManagement() {
     }
   }, [userRole, fetchProfesores])
 
+  // 🔹 CAMBIO: `addProfesor` ahora solo llama a tu API
   async function addProfesor() {
-    // --- 1. Tu lógica de validación se mantiene intacta ---
     if (!nombre || !email) {
-      setValidationMessage("Por favor, complete todos los campos OBLIGATORIOS.")
+      setValidationMessage("Complete todos los campos")
       setShowValidationDialog(true)
       return
     }
-  
     if (!isValidEmail(email)) {
-      setValidationMessage("Por favor, ingrese un email válido.")
+      setValidationMessage("Ingrese un email válido")
       setShowValidationDialog(true)
       return
     }
-  
-    // --- 2. Tu lógica para buscar duplicados y asociar se mantiene ---
-    // (Esta parte seguirá usando Supabase por ahora, ya que es una funcionalidad compleja)
-    if (!useMySqlApi) {
-        const { data: existingProfesors, error: searchError } = await supabase
-        .from("profesores")
-        .select("*")
-        .or(`nombre.ilike.%${nombre}%,email.ilike.${email}`)
-  
-        if (searchError) {
-          console.error("Error buscando profesores existentes:", searchError)
-          setValidationMessage("Error al buscar profesores existentes. Por favor, intente de nuevo.")
-          setShowValidationDialog(true)
-          return
-        }
-  
-        if (existingProfesors && existingProfesors.length > 0) {
-          setExistingProfesors(existingProfesors)
-          setShowAssociateDialog(true)
-          return
-        }
-    }
-  
-  
-    // --- 3. La inserción del nuevo profesor ahora usa el Feature Flag ---
-    setIsLoading(true);
+    setIsLoading(true)
     try {
-      const profesorData = {
-        nombre,
-        email,
-        usuario_id: user?.id,
-      };
-  
-      if (useMySqlApi) {
-        // Si el flag es 'mysql', llama a nuestra nueva API
-        const response = await fetch('/api/profesores', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(profesorData),
-        });
-        const responseData = await response.json();
-        if (!response.ok) {
-          // Lanza un error para que el bloque catch lo maneje
-          throw new Error(responseData.error || 'Error al agregar el profesor');
-        }
-      } 
-  
-      // --- 4. El código de éxito se ejecuta si no hubo errores ---
-      fetchProfesores()
-      setNombre("")
-      setEmail("")
-      toast({
-        title: "Éxito",
-        description: "Profesor agregado correctamente",
+      const response = await fetch('/api/profesores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, email, usuario_id: user?.id }),
       })
-  
-    } catch (err) {
-      // --- 5. Manejo de errores unificado ---
-      const message = err instanceof Error ? err.message : "Ocurrió un error al agregar el profesor.";
-      console.error("Error adding profesor:", err);
-      setValidationMessage(message);
-      setShowValidationDialog(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function updateProfesor() {
-    if (!editingProfesor || !nombre || !email) {
-      return
-    }
-
-    const { data, error } = await supabase.from("profesores").update({ nombre, email }).eq("id", editingProfesor.id)
-    if (error) {
-      console.error("Error updating profesor:", error)
-      if (error.code === "23505") {
-        setError("El nombre o correo del profesor ya está en uso por otro registro.")
-      } else {
-        setError("Error al actualizar el profesor. Por favor, intenta de nuevo.")
-      }
-    } else {
+      if (!response.ok) throw new Error('Error al agregar el profesor')
       fetchProfesores()
-      setEditingProfesor(null)
       setNombre("")
       setEmail("")
-      setIsEditModalOpen(false)
+      toast({ title: "Éxito", description: "Profesor agregado correctamente" })
+    } catch (error) {
+      setValidationMessage(error instanceof Error ? error.message : "Error desconocido")
+      setShowValidationDialog(true)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  async function deleteProfesor(profesor: Profesor) {
-    // Verificar si el usuario tiene permiso para eliminar este profesor
-    if (!isAdmin && profesor.usuario_id !== user?.id) {
-      setError("No tienes permiso para eliminar este profesor.")
-      return
+
+  async function updateProfesor(profesor: Profesor) {
+    try {
+      const response = await fetch('/api/profesores', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profesor),
+      })
+      if (!response.ok) throw new Error('Error al actualizar profesor')
+      fetchProfesores()
+      setIsEditModalOpen(false)
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Error desconocido")
     }
-    setProfesorToDelete(profesor)
-    setShowDeleteConfirmDialog(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!profesorToDelete) return
+    setIsLoading(true)
+    try {
+      const response = await fetch(`/api/profesores?id=${profesorToDelete.id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Error al eliminar')
+      fetchProfesores()
+      toast({ title: "Éxito", description: "Profesor eliminado correctamente" })
+    } catch (error) {
+      toast({ title: "Error", description: String(error), variant: "destructive" })
+    } finally {
+      setShowDeleteConfirmDialog(false)
+      setIsLoading(false)
+    }
   }
 
  // En components/ProfesorManagement.tsx
 
- const handleDeleteConfirm = async () => {
-  if (!profesorToDelete) return;
-  
-  setIsLoading(true);
-  try {
-    if (useMySqlApi) {
-      // Lógica para MySQL: Llama a la API que ya se encarga de todo
-      const response = await fetch(`/api/profesores?id=${profesorToDelete.id}`, {
-        method: 'DELETE',
-      });
-      const responseData = await response.json();
-      if (!response.ok) throw new Error(responseData.error || 'Error al eliminar');
-    } else {
-      // Lógica para Supabase: Mantiene el código original para desvincular
-      const tablasMaterias = ["materias_enero_abril", "materias_mayo_agosto", "materias_septiembre_diciembre"];
-      for (const tabla of tablasMaterias) {
-        const { error: updateError } = await supabase
-          .from(tabla)
-          .update({ profesor_id: null })
-          .eq("profesor_id", profesorToDelete.id);
-        if (updateError) {
-          // Este es el error que estabas viendo, ahora solo se ejecuta en modo Supabase
-          throw new Error(`Fallo al actualizar '${tabla}': ${JSON.stringify(updateError)}`);
-        }
-      }
-      const { error: deleteError } = await supabase.from("profesores").delete().eq("id", profesorToDelete.id);
-      if (deleteError) throw deleteError;
-    }
-    
-    fetchProfesores();
-    toast({ title: "Éxito", description: "Profesor eliminado correctamente." });
-
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Hubo un problema al eliminar.";
-    setError(message);
-    toast({ variant: "destructive", title: "Error de Eliminación", description: message });
-  } finally {
-    setShowDeleteConfirmDialog(false);
-    setProfesorToDelete(null);
-    setIsLoading(false);
-  }
-};
 
   async function disassociateProfesor(profesor: Profesor) {
     if (!profesor || !currentUserId) return
@@ -380,110 +278,11 @@ export default function ProfesorManagement() {
     setShowDisassociateDialog(true)
   }
 
-  async function handleDisassociateConfirm() {
-    if (!profesorToDisassociate || !currentUserId) return
 
-    try {
-      // Convertir el ID a número si es necesario
-      const profesorIdNumber = Number.parseInt(profesorToDisassociate.id, 10)
 
-      if (isNaN(profesorIdNumber)) {
-        throw new Error("ID de profesor inválido")
-      }
 
-      // Eliminar la asociación de la tabla profesor_usuario
-      const { error } = await supabase
-        .from("profesor_usuario")
-        .delete()
-        .eq("profesor_id", profesorIdNumber)
-        .eq("usuario_id", currentUserId)
 
-      if (error) throw error
-
-      toast({
-        title: "Éxito",
-        description: "Profesor desasociado correctamente",
-      })
-
-      // Actualizar la lista de profesores
-      fetchProfesores()
-    } catch (error) {
-      console.error("Error al desasociar profesor:", error)
-      setError("Error al desasociar el profesor: " + (error instanceof Error ? error.message : String(error)))
-    } finally {
-      setShowDisassociateDialog(false)
-      setProfesorToDisassociate(null)
-    }
-  }
-
-  async function associateProfesor(profesorId: string) {
-    try {
-      if (!currentUserId) {
-        setValidationMessage("No se pudo identificar tu usuario. Por favor, inicia sesión nuevamente.")
-        setShowValidationDialog(true)
-        return
-      }
-
-      // Verificar si la tabla profesor_usuario existe
-      const tableExists = await checkTableExists()
-
-      if (!tableExists) {
-        setValidationMessage(
-          "La funcionalidad de asociación de profesores no está disponible en este momento. Por favor, contacta al administrador.",
-        )
-        setShowValidationDialog(true)
-        setShowAssociateDialog(false)
-        return
-      }
-
-      // Verificar si ya existe una asociación
-      const { data: existingAssociation, error: checkError } = await supabase
-        .from("profesor_usuario")
-        .select("*")
-        .eq("profesor_id", profesorId)
-        .eq("usuario_id", currentUserId)
-        .single()
-
-      if (!checkError && existingAssociation) {
-        setValidationMessage("Este profesor ya está asociado a tu cuenta.")
-        setShowValidationDialog(true)
-        setShowAssociateDialog(false)
-        return
-      }
-
-      // Crear la asociación en la tabla profesor_usuario
-      // Nota: profesorId es un string pero necesitamos convertirlo a número para la BD
-      const profesorIdNumber = Number.parseInt(profesorId, 10)
-
-      if (isNaN(profesorIdNumber)) {
-        throw new Error("ID de profesor inválido")
-      }
-
-      const { error: associateError } = await supabase.from("profesor_usuario").insert([
-        {
-          profesor_id: profesorIdNumber, // Usar el ID como número
-          usuario_id: currentUserId,
-        },
-      ])
-
-      if (associateError) {
-        throw associateError
-      }
-
-      fetchProfesores()
-      setShowAssociateDialog(false)
-      setNombre("")
-      setEmail("")
-      toast({
-        title: "Éxito",
-        description: "Profesor asociado correctamente a tu cuenta",
-      })
-    } catch (error) {
-      console.error("Error al asociar profesor:", error)
-      setValidationMessage("Error al asociar el profesor: " + (error instanceof Error ? error.message : String(error)))
-      setShowValidationDialog(true)
-    }
-  }
+     
 
   const handleEditProfesor = (profesor: Profesor) => {
     // ✅ Usar `isAdmin` del hook
@@ -582,10 +381,7 @@ export default function ProfesorManagement() {
         })
 
         // Insertar profesores en la base de datos
-        for (const profesor of profesoresData) {
-          const { error } = await supabase.from("profesores").insert([profesor])
-          if (error) throw error
-        }
+      
 
         toast({
           title: "Éxito",
@@ -953,21 +749,8 @@ export default function ProfesorManagement() {
 
       <AssociateDialog />
 
-      <AlertDialog open={showDisassociateDialog} onOpenChange={setShowDisassociateDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Desasociar profesor</AlertDialogTitle>
-            <AlertDialogDescription>
-              ¿Estás seguro de que deseas desasociar este profesor de tu cuenta? Esto no eliminará al profesor de la
-              base de datos, solo lo quitará de tu lista.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowDisassociateDialog(false)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDisassociateConfirm}>Confirmar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+     
+      
 
       <Dialog open={showDisponibilidadDialog} onOpenChange={setShowDisponibilidadDialog}>
         <DialogContent className="max-w-5xl">

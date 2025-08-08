@@ -322,11 +322,19 @@ export function Sidebar({
   }
 
   const handleSignOut = async () => {
-    if (isSigningOut) return;
-    setIsSigningOut(true);
-    toast({ title: "Cerrando sesión..." });
-    await logout(); // <-- Llama a la nueva función de logout
-  };
+    if (isSigningOut) return
+    setIsSigningOut(true)
+    toast({ title: "Cerrando sesión..." })
+    try {
+      await logout()          // 👈 ya hace: fetch con credentials, setUser(null) y redirect
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error al cerrar sesión", variant: "destructive" })
+    } finally {
+      setIsSigningOut(false)
+    }
+  }
+  
 
   return (
     <TooltipProvider>

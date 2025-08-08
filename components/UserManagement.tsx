@@ -1,4 +1,5 @@
 "use client"
+import CarreraSelect from "@/components/carrera-select"
 
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/lib/auth"
@@ -21,6 +22,7 @@ interface Usuario {
   carrera_id?: number | null
   carrera_nombre?: string | null
 }
+type Carrera = { id: number; nombre: string }
 
 export default function UserManagement() {
   const { user: currentUser, isAdmin } = useAuth();
@@ -37,7 +39,10 @@ export default function UserManagement() {
   const [userToDelete, setUserToDelete] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSelfDeleteModalOpen, setIsSelfDeleteModalOpen] = useState(false);
-
+  const [carreraId, setCarreraId] = useState<number | null>(null)
+  const [editCarreraId, setEditCarreraId] = useState<number | null>(null)
+  const [carreras, setCarreras] = useState<Carrera[]>([])
+const [carrerasLoading, setCarrerasLoading] = useState(true)
   const fetchData = useCallback(async () => {
     if (!isAdmin) return;
     setIsLoading(true);
@@ -45,7 +50,7 @@ export default function UserManagement() {
       const response = await fetch('/api/users');
       if (!response.ok) throw new Error('No se pudieron cargar los usuarios.');
       const data = await response.json();
-      setUsuarios(data.users || []);
+      setUsuarios(data.users || data || []);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -57,6 +62,23 @@ export default function UserManagement() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        setCarrerasLoading(true)
+        const r = await fetch("/api/carreras")
+        if (!r.ok) throw new Error("No se pudieron cargar las carreras")
+        const data = await r.json()
+        if (alive) setCarreras(data)
+      } catch {
+        if (alive) setCarreras([])
+      } finally {
+        if (alive) setCarrerasLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [])
   async function addUser() {
     if (!email || !nombre || !rol || !password) {
       toast({ title: "Error", description: "Por favor complete todos los campos.", variant: "destructive" });
@@ -67,7 +89,7 @@ export default function UserManagement() {
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, nombre, rol, password }),
+        body: JSON.stringify({ email, nombre, rol, password, carrera_id: carreraId }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -92,13 +114,17 @@ export default function UserManagement() {
         const response = await fetch('/api/users', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: editingUser.id, nombre, rol }),
+            body: JSON.stringify({ id: editingUser.id, nombre, rol, carrera_id: editCarreraId }),
+
+
+
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
         
         toast({ title: "Éxito", description: "Usuario actualizado." });
-        fetchData();
+        await fetchData();
+setIsEditModalOpen(false);
         setIsEditModalOpen(false);
     } catch (err: any) {
         setError(err.message);
@@ -140,9 +166,13 @@ export default function UserManagement() {
     setEditingUser(user);
     setNombre(user.nombre);
     setRol(user.rol);
+    setEditCarreraId(user.carrera_id ?? null);
     setIsEditModalOpen(true);
-  };
+  
+   
 
+  };
+  
   const columns: ColumnDef<Usuario>[] = [
     { accessorKey: "nombre", header: "Nombre" },
     { accessorKey: "email", header: "Email" },
@@ -183,13 +213,21 @@ export default function UserManagement() {
             <Input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <Input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
             <Select value={rol} onValueChange={setRol}>
+              
+              
               <SelectTrigger><SelectValue placeholder="Seleccionar rol" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="admin">Administrador</SelectItem>
                 <SelectItem value="director">Director</SelectItem>
                  <SelectItem value="usuario">Usuario</SelectItem>
               </SelectContent>
+
             </Select>
+            <div className="md:col-span-2">
+              <CarreraSelect value={carreraId} onChange={setCarreraId} />
+
+</div>
+
             <div className="relative">
               <Input type={showPassword ? "text" : "password"} placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} />
               <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full" onClick={() => setShowPassword(!showPassword)}>
@@ -204,32 +242,43 @@ export default function UserManagement() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Lista de Usuarios</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Lista de UsuariosS</CardTitle></CardHeader>
         <CardContent>
             <DataTable columns={columns} data={usuarios} />
         </CardContent>
       </Card>
 
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Editar Usuario</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <Input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-            <Select value={rol} onValueChange={setRol}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="admin">Administrador</SelectItem>
-                <SelectItem value="director">Director</SelectItem>
-                <SelectItem value="usuario">Usuario</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancelar</Button>
-            <Button onClick={updateUser} disabled={isLoading}>{isLoading ? "Guardando..." : "Guardar Cambios"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+  <DialogContent>
+    <DialogHeader><DialogTitle>Editar Usuario</DialogTitle></DialogHeader>
+    <div className="space-y-4">
+      <Input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+      <Select value={rol} onValueChange={setRol}>
+  <SelectTrigger><SelectValue placeholder="Seleccionar rol" /></SelectTrigger>
+  <SelectContent>
+    <SelectItem value="admin">Administrador</SelectItem>
+    <SelectItem value="director">Director</SelectItem>
+    <SelectItem value="usuario">Usuario</SelectItem>
+  </SelectContent>
+</Select>
+
+<div className="md:col-span-2">
+<CarreraSelect
+  value={editCarreraId}
+  onChange={setEditCarreraId}
+/>
+</div>
+
+    </div>
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancelar</Button>
+      <Button onClick={updateUser} disabled={isLoading}>
+        {isLoading ? "Guardando..." : "Guardar Cambios"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
       
       <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
         <DialogContent>

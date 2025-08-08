@@ -76,16 +76,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     // Función de logout que llama a la API para borrar la cookie
-    const logout = async () => {
+     const logout = async () => {
         try {
-            await fetch('/api/auth/logout', { method: 'POST' });
+          await fetch("/api/auth/logout", { method: "POST", credentials: "include" }) 
         } catch (error) {
-            console.error("Error al cerrar sesión en el servidor:", error);
+          console.error("Error al cerrar sesión en el servidor:", error)
         } finally {
-            setUser(null);
-            window.location.href = '/';
+          setUser(null)                                 // limpia contexto
+          localStorage.removeItem("user");
+          sessionStorage.clear();
+          
+          window.location.replace("/")                  // redirige al login
         }
-    };
+      }
+      
     
     const isAdmin = user?.rol === 'admin';
     

@@ -1,20 +1,20 @@
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { NextResponse } from "next/server"
 
 export async function POST() {
-    try {
-        // Eliminamos la cookie estableciendo su tiempo de vida en el pasado
-        cookies().set('authToken', '', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV !== 'development',
-            sameSite: 'strict',
-            expires: new Date(0), // Fecha de expiración en el pasado
-            path: '/',
-        });
+  const res = NextResponse.json({ ok: true })
 
-        return NextResponse.json({ message: 'Sesión cerrada exitosamente.' });
-    } catch (error) {
-        console.error("Error en API de logout:", error);
-        return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
-    }
+  // Debe coincidir nombre, path y SameSite con la cookie original
+  const base =
+    "authToken=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+
+  // Dev/Local (sin Secure)
+  res.headers.append("Set-Cookie", base)
+
+  // Prod (HTTPS) – también con Secure
+  if (process.env.NODE_ENV !== "development") {
+    res.headers.append("Set-Cookie", `${base}; Secure`)
+  }
+
+  res.headers.set("Cache-Control", "no-store")
+  return res
 }
